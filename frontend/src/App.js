@@ -124,7 +124,7 @@ function App() {
           {isRegisterModalOpen && (
             <RegisterModal 
               onClose={() => setIsRegisterModalOpen(false)} 
-              onSwitchToLogin={() => { setIsRegisterModalOpen(true); setIsLoginModalOpen(false); }} 
+              onSwitchToLogin={() => { setIsRegisterModalOpen(false); setIsLoginModalOpen(true); }} 
             />
           )}
         </>

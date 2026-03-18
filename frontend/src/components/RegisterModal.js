@@ -34,8 +34,10 @@ export default function RegisterModal({ onClose, onSwitchToLogin }) {
         setMsg(data.detail || "註冊失敗");
         return;
       }
-
+      
+      onClose();
       onSwitchToLogin();
+
     } catch {
       setMsg("伺服器連線錯誤");
     }
@@ -111,7 +113,13 @@ export default function RegisterModal({ onClose, onSwitchToLogin }) {
 
         <p className="text-white/60 mt-3 text-sm text-center">
           已有帳號？
-          <button onClick={onSwitchToLogin} className="text-primary ml-1">
+          <button
+            onClick={() => {
+              onClose();
+              onSwitchToLogin();
+            }}
+            className="text-primary ml-1"
+          >
             返回登入
           </button>
         </p>

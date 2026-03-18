@@ -13,6 +13,8 @@ export default function ModelManagement({
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [showBatchConfirm, setShowBatchConfirm] = useState(false);
 
   const navProps = {
     onNavigateToDashboard,
@@ -49,7 +51,9 @@ export default function ModelManagement({
 
       const data = await res.json();
 
-      const mapped = data.map((item, index) => {
+      const mapped = data
+        .sort((a, b) => b.model_id - a.model_id) 
+        .map((item, index) => {
         const trainedDate = item.trained_at
           ? new Date(item.trained_at).toLocaleDateString('zh-TW')
           : '-';
@@ -62,6 +66,10 @@ export default function ModelManagement({
 
         return {
           id: item.model_id,
+
+          fileName:
+            item.file_name || '未知檔案',
+      
           siteDisplay:
             `${item.model_type || '-'}_${item.model_id} ` +
             (
@@ -90,16 +98,13 @@ export default function ModelManagement({
   };
 
   const handleDelete = async (id) => {
-    if (!deleteId) return;
-
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const userId = user.user_id;
+
       const res = await fetch(
-        `http://127.0.0.1:8000/train/trained-models/${deleteId}?user_id=${userId}`,
-        {
-          method: 'DELETE',
-        }
+        `http://127.0.0.1:8000/train/trained-models/${id}?user_id=${userId}`,
+        { method: 'DELETE' }
       );
 
       const data = await res.json().catch(() => ({}));
@@ -108,12 +113,46 @@ export default function ModelManagement({
         throw new Error(data.detail || '刪除模型失敗');
       }
 
-      setModels((prev) => prev.filter((m) => m.id !== deleteId));
+      setModels(prev => prev.filter(m => m.id !== id));
       setDeleteId(null);
 
     } catch (error) {
-      console.error('刪除模型失敗:', error);
-      alert(error.message || '刪除模型失敗');
+      console.error(error);
+      alert(error.message);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedIds.length === 0) return;
+
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const userId = user.user_id;
+
+      const res = await fetch(
+        `http://127.0.0.1:8000/train/trained-models/batch-delete`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model_ids: selectedIds,
+            user_id: userId
+          })
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || '批次刪除失敗');
+      }
+
+      setModels(prev => prev.filter(m => !selectedIds.includes(m.id)));
+      setSelectedIds([]);
+
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
     }
   };
 
@@ -149,6 +188,30 @@ export default function ModelManagement({
                   className="bg-white/[0.02] border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between hover:bg-white/[0.04] transition-all group"
                 >
                   <div className="flex items-center gap-6">
+                    <label className="cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={selectedIds.includes(model.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedIds(prev => [...prev, model.id]);
+                          } else {
+                            setSelectedIds(prev => prev.filter(id => id !== model.id));
+                          }
+                        }}
+                      />
+
+                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all
+                        ${selectedIds.includes(model.id)
+                          ? 'bg-primary border-primary'
+                          : 'border-white/30 hover:border-white/60'}
+                      `}>
+                        {selectedIds.includes(model.id) && (
+                          <span className="material-symbols-outlined text-xs text-black">check</span>
+                        )}
+                      </div>
+                    </label>
                     <div className="size-14 rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-background-dark transition-colors">
                       <span className="material-symbols-outlined !text-3xl">psychology</span>
                     </div>
@@ -170,7 +233,7 @@ export default function ModelManagement({
                       </div>
 
                       <p className="text-xs text-white/40 mt-1.5 font-mono">
-                        ID: {model.id} | 算法: {model.type} | 訓練日期: {model.date}
+                        {model.fileName || '未知檔案'} | 算法: {model.type} | 訓練日期: {model.date}
                       </p>
                     </div>
                   </div>
@@ -215,9 +278,45 @@ export default function ModelManagement({
             )}
           </div>
         )}
+        {selectedIds.length >= 2 && (
+          <div className="fixed bottom-0 left-0 w-full z-50">
+            <div className="w-full bg-background-dark/95 backdrop-blur border-t border-white/10 px-8 py-4 flex items-center justify-between">
+
+              {/* 左側 */}
+              <div className="flex items-center gap-6">
+                <p className="text-white">
+                  已選擇 <span className="text-primary font-bold">{selectedIds.length}</span> 筆模型
+                </p>
+
+                <button
+                  onClick={() => setSelectedIds(models.map(m => m.id))}
+                  className="text-sm text-white/60 hover:text-white underline"
+                >
+                  全選
+                </button>
+
+                <button
+                  onClick={() => setSelectedIds([])}
+                  className="text-sm text-white/60 hover:text-white underline"
+                >
+                  取消選取
+                </button>
+              </div>
+
+              {/* 右側 */}
+              <button
+                onClick={() => setShowBatchConfirm(true)}
+                className="px-6 py-2 bg-red-500 rounded-lg text-sm font-bold hover:bg-red-600 transition"
+              >
+                刪除選取項目
+              </button>
+
+            </div>
+          </div>
+        )}
       </main>
 
-      {/* 刪除確認 Modal */}
+      {/* 單筆刪除 Modal */}
       {deleteId && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="bg-background-dark border border-white/10 p-6 rounded-xl w-80">
@@ -234,7 +333,37 @@ export default function ModelManagement({
               </button>
 
               <button
-                onClick={handleDelete}
+                onClick={() => handleDelete(deleteId)}
+                className="px-4 py-2 bg-red-500 rounded-lg"
+              >
+                刪除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔥 批次刪除 Modal（放這裡） */}
+      {showBatchConfirm && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-background-dark border border-white/10 p-6 rounded-xl w-80">
+            <h3 className="text-lg font-bold mb-4">
+              確定要刪除 {selectedIds.length} 筆模型嗎？
+            </h3>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowBatchConfirm(false)}
+                className="px-4 py-2 bg-white/10 rounded-lg"
+              >
+                取消
+              </button>
+
+              <button
+                onClick={async () => {
+                  await handleBatchDelete();
+                  setShowBatchConfirm(false);
+                }}
                 className="px-4 py-2 bg-red-500 rounded-lg"
               >
                 刪除

@@ -2,6 +2,7 @@
 # 訓練 + 模型管理端點
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import delete
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -55,10 +56,25 @@ def debug_modules():
 
 @router.get("/info")
 def train_info(data_id: int, db: Session = Depends(get_db)):
-    """data_id = after_data.after_id"""
+    # 先找清洗資料
     entry = db.query(AfterData).filter(AfterData.after_id == data_id).first()
-    if not entry:
-        raise HTTPException(status_code=404, detail="after_id not found")
+
+    if entry:
+        return {
+            "type": "cleaned",
+            "file_name": entry.after_name
+        }
+
+    # 沒有清洗 → 找原始資料
+    row = db.query(SiteData).filter(SiteData.upload_id == data_id).first()
+
+    if row:
+        return {
+            "type": "raw",
+            "file_name": row.data_name
+        }
+
+    raise HTTPException(status_code=404, detail="找不到資料")
     return {
         "data_id": data_id,
         "cleaned_file": entry.file_path,
@@ -131,7 +147,18 @@ def list_trained_models(
     )
 
     out = []
-    for model, site, data in rows:
+    for model, site, after in rows:
+
+        if after:
+            file_name = after.after_name
+        else:
+            # 🔥 再查一次 SiteData（只查一筆，不會重複）
+            site_data = db.query(SiteData).filter(
+                SiteData.upload_id == model.data_id
+            ).first()
+
+            file_name = site_data.data_name if site_data else "未知檔案"
+    
         out.append({
             "model_id": model.model_id,
             "model_type": model.model_type,
@@ -139,16 +166,53 @@ def list_trained_models(
             "file_path": model.file_path,
             "trained_at": model.trained_at.isoformat() if model.trained_at else None,
 
-            "data_id": model.data_id,
-            "site_id": model.site_id,
-
             "site_name": site.site_name if site else None,
             "location": site.location if site else None,
-            "original_filename": data.after_name if data else None,
+
+            "file_name": file_name
         })
 
     return out
 
+@router.post("/trained-models/batch-delete")
+def batch_delete_models(data: dict, db: Session = Depends(get_db)):
+    model_ids = data.get("model_ids", [])
+    user_id = data.get("user_id")
+
+    if not model_ids:
+        raise HTTPException(status_code=400, detail="沒有選擇模型")
+
+    # 🔥 只刪自己的模型（超重要）
+    models = (
+        db.query(TrainedModel)
+        .join(Site, TrainedModel.site_id == Site.site_id)
+        .filter(
+            TrainedModel.model_id.in_(model_ids),
+            Site.user_id == user_id
+        )
+        .all()
+    )
+
+    if not models:
+        raise HTTPException(status_code=404, detail="找不到可刪除的模型")
+
+    # 刪檔案（跟你單筆一樣）
+    for model in models:
+        if model.file_path:
+            base_dir = Path(__file__).resolve().parent.parent
+            artifact_path = base_dir / model.file_path
+            if artifact_path.exists():
+                artifact_path.unlink()
+
+            meta_path = artifact_path.with_suffix(".meta.json")
+            if meta_path.exists():
+                meta_path.unlink()
+
+        db.delete(model)
+
+    db.commit()
+
+    return {"message": f"成功刪除 {len(models)} 筆"}
 
 # ═══════════════════════════════════════
 #  單模型訓練（內部函式）

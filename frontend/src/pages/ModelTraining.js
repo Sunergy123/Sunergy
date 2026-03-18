@@ -128,9 +128,17 @@ export default function ModelTraining({ onBack, onNext, onNavigateToDashboard, o
     const dataId =
       localStorage.getItem('afterDataId') ||
       localStorage.getItem('lastDataId');
-    if (dataId) {
-      setCleanedFileName(`Data ID: ${dataId}`);
-    }
+
+    if (!dataId) return;
+
+    fetch(`http://127.0.0.1:8000/train/info?data_id=${dataId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.file_name) {
+          setCleanedFileName(data.file_name);
+        }
+      })
+      .catch(err => console.error(err));
   }, []);
 
   const handleStartTraining = async () => {

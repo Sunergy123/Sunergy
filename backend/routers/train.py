@@ -9,6 +9,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
+from sqlalchemy import func
+
 from database import get_db
 from models import AfterData, TrainedModel, Site, SiteData
 from schemas import TrainRequest
@@ -881,3 +883,31 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
         "results": results,
         "warnings": warnings,
     })
+
+@router.get("/dashboard-stats/{user_id}")
+def get_dashboard_stats(user_id: int, db: Session = Depends(get_db)):
+    """
+    計算該使用者的減碳效益統計資料
+    """
+    # 1. 取得該使用者所有模型關聯的總發電量 (EAC)
+    # 邏輯：透過 Site 關聯 TrainedModel，再透過 TrainedModel 關聯 SiteData
+    # 這裡計算的是所有上傳資料的總和
+    total_eac = (
+        db.query(func.sum(SiteData.eac))
+        .join(Site, SiteData.site_id == Site.site_id)
+        .filter(Site.user_id == user_id)
+        .scalar()
+    ) or 0
+
+    # 2. 定義電力排碳係數 (根據最新公告)
+    carbon_factor = 0.494 
+    
+    # 3. 計算總減碳量
+    total_carbon_reduction = round(total_eac * carbon_factor, 2)
+
+    return {
+        "user_id": user_id,
+        "total_kwh": round(total_eac, 2),
+        "carbon_factor": carbon_factor,
+        "total_carbon_reduction": total_carbon_reduction
+    }

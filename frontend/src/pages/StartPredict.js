@@ -1,12 +1,16 @@
 // src/pages/StartPredict.js
 import React, { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
+const API_BASE_URL = "http://127.0.0.1:8000";
 
 export default function StartPredict({
   onBack,
   onNext,
+  onNavigateToDashboard, 
+  onNavigateToTrain,     
   onNavigateToPredict,
   onNavigateToSites,
+  onNavigateToModelMgmt, 
   onLogout,
   restoredFromVisualization = false,
 }) {
@@ -21,7 +25,7 @@ export default function StartPredict({
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
 
-  // 🔥 原始欄位（顯示用）
+  // 原始欄位（顯示用）
   const [originalFeatures, setOriginalFeatures] = useState([]);
 
   // 系統實際使用欄位（流程用）
@@ -171,7 +175,7 @@ export default function StartPredict({
       setOriginalFeatures(json.original_features || []); // 🔥
       setRows(json.rows || null);
 
-      // 🔥 存 localStorage
+      // 存 localStorage
     localStorage.setItem("lastUploadedFile", json.file_name);
     localStorage.setItem("lastDataId", json.upload_id);
     localStorage.removeItem("afterDataId");
@@ -182,7 +186,7 @@ export default function StartPredict({
     );
     localStorage.setItem("lastRows", json.rows || "");
 
-    // ⭐ 新增這三行
+    // 新增這三行
     localStorage.setItem("selectedSiteId", selectedSite);
     localStorage.setItem("lastSiteId", selectedSite);
 
@@ -199,17 +203,13 @@ export default function StartPredict({
   return (
     <div className="min-h-screen w-full bg-background-dark text-white flex flex-col">
       <Navbar
-        activePage="start-predict" // 修正：由 "predict" 改為 "start-predict"
-        onNavigateToDashboard={() => {
-          clearPredictCache();
-          onBack();
-        }}
+        activePage="start-predict" 
+        onNavigateToDashboard={onNavigateToDashboard} 
         onNavigateToPredict={onNavigateToPredict}
         onNavigateToSites={onNavigateToSites}
+        onNavigateToTrain={onNavigateToTrain}         
+        onNavigateToModelMgmt={onNavigateToModelMgmt}   
         onLogout={onLogout}
-        // 如果 App.js 有傳入其他 props，記得也要帶上
-        onNavigateToTrain={() => {}} 
-        onNavigateToModelMgmt={() => {}}
       />
 
       {/* Step Header / Breadcrumb */}

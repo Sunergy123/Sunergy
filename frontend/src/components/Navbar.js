@@ -79,7 +79,9 @@ export default function Navbar({
             </button>
             
             {/* 4. 案場管理 */}
-
+            <button onClick={onNavigateToSites} className={getLinkClass('site')}>
+              案場管理
+            </button>
 
             {/* 5. 模型管理 (新獨立功能) */}
             <button onClick={onNavigateToModelMgmt} className={getLinkClass('model-mgmt')}>

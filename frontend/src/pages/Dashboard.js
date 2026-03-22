@@ -1,6 +1,55 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 
+const CarbonReductionSection = ({ totalGeneration = 2450 }) => {
+  // 2024年台灣電力排碳係數假設為 0.494 kgCO₂e/kWh (請依實際需求調整)
+  const carbonFactor = 0.494; 
+  const totalReduction = (totalGeneration * carbonFactor).toFixed(2);
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* A. SDG 7 說明卡片 */}
+      <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-6 shadow-lg">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="size-8 rounded-lg bg-[#F9AD13] text-white flex items-center justify-center font-bold text-xs">
+            SDGs
+          </div>
+          <h3 className="text-base font-bold text-white/90">7 可負擔的潔淨能源</h3>
+        </div>
+        <p className="text-sm text-white/60 leading-relaxed">
+          響應 <span className="text-[#F9AD13] font-bold">SDGs 7 永續發展目標</span>，本系統透過精準預測優化太陽能發電效率，確保人人皆可享有安全、永續且可負擔的潔淨能源，共同邁向淨零碳排。
+        </p>
+      </div>
+
+      {/* B & C. 減碳量計算與累積數值 */}
+      <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-gradient-to-br from-green-900/20 to-white/[0.03] p-6 shadow-lg">
+        <h3 className="text-base font-medium text-white/80 flex items-center gap-2">
+          <span className="material-symbols-outlined text-green-400">eco</span>
+          環境減碳效益
+        </h3>
+        
+        {/* C. 累積減碳量數值 */}
+        <div className="text-center my-4">
+          <p className="text-5xl font-black text-green-400">
+            {totalReduction} <span className="text-lg font-normal text-white/60">kgCO₂e</span>
+          </p>
+          <p className="text-xs text-white/40 mt-2 tracking-widest uppercase">
+            目前已累積減碳貢獻
+          </p>
+        </div>
+
+        {/* B. 減碳量公式說明 */}
+        <div className="mt-2 pt-4 border-t border-white/5">
+          <p className="text-[10px] text-white/30 uppercase font-bold mb-2">計算公式說明</p>
+          <div className="bg-black/20 rounded-lg p-3 font-mono text-[11px] text-green-400/80">
+            減碳量 (kg CO₂) = 太陽能發電量 (kWh) × 電力排碳係數 ({carbonFactor})
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SystemIntroduction = () => (
   <div className="w-full h-full min-h-[250px] bg-white/[0.03] rounded-2xl border border-white/10 p-8 flex flex-col justify-center">
     <div className="flex items-center gap-3 mb-4">
@@ -34,14 +83,32 @@ const SystemIntroduction = () => (
             <span className="material-symbols-outlined text-sm">show_chart</span>
             高精度預測
           </h4>
-          <p className="text-sm opacity-60">採用 LSTM 與 XGBoost 等演算法，將誤差降至最低。</p>
+          <p className="text-sm opacity-60">採用 SVR 與 XGBoost 等演算法，將誤差降至最低。</p>
         </div>
+
+        <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+          <h4 className="text-white font-bold mb-1 flex items-center gap-2">
+            <span className="material-symbols-outlined text-sm">cleaning_services</span>
+            智能資料清洗
+          </h4>
+          <p className="text-sm opacity-60">自動識別缺失值與異常偏離，確保模型訓練數據的純淨與穩定。</p>
+        </div>
+
+        <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+          <h4 className="text-white font-bold mb-1 flex items-center gap-2">
+            <span className="material-symbols-outlined text-sm">settings_input_component</span>
+            靈活模型配置
+          </h4>
+          <p className="text-sm opacity-60">支援多樣化的資料上傳與參數調整，針對不同地理條件快速建立專屬預測模型。</p>
+        </div>
+
       </div>
     </div>
   </div>
 );
 
 export default function Dashboard({
+  
   onLogout,
   onNavigateToTrain,
   onNavigateToDashboard,
@@ -50,6 +117,8 @@ export default function Dashboard({
   onNavigateToPredict,
   onNavigateToModelMgmt,
 }) {
+  // 尋找 const [searchTerm, setSearchTerm] = useState(''); 附近
+  const [stats, setStats] = useState({ total_kwh: 0, total_carbon_reduction: 0 }); // ⭐ 新增這行
   const [searchTerm, setSearchTerm] = useState('');
   const [allModels, setAllModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(true);
@@ -131,7 +200,27 @@ export default function Dashboard({
     };
 
     fetchModels();
-  }, []);
+    }, []);
+  // 在原本的 fetchModels(); 下方新增以下區塊
+  useEffect(() => {
+  const fetchDashboardStats = async () => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user"));
+      if (!user?.user_id) return;
+
+      // 呼叫你在 train.py 新增的端點
+      const res = await fetch(`http://127.0.0.1:8000/train/dashboard-stats/${user.user_id}`);
+      if (!res.ok) throw new Error("統計資料抓取失敗");
+      
+      const data = await res.json();
+      setStats(data); // ⭐ 將後端計算的結果存入 State
+    } catch (err) {
+      console.error('讀取統計失敗:', err);
+    }
+  };
+
+  fetchDashboardStats();
+}, []); // 僅在頁面載入時執行一次
 
   const filteredModels = allModels.filter((model) =>
     model.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -227,24 +316,11 @@ export default function Dashboard({
             </section>
           </div>
 
+          {/* --- Dashboard.js 右側欄位 (lg:col-span-5) --- */}
           <div className="lg:col-span-5 flex flex-col gap-8">
-            <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-6 shadow-lg">
-              <h3 className="text-base font-medium text-white/80">最佳歷史預測準確度</h3>
-              <div className="text-center">
-                <p className="text-6xl font-bold text-green-400">98.7%</p>
-                <p className="text-sm text-white/60 font-medium">準確度 (MAPE)</p>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-gradient-to-br from-green-900/20 to-white/[0.03] p-6 shadow-lg">
-              <h3 className="text-base font-medium text-white/80 flex items-center gap-2">
-                <span className="material-symbols-outlined text-green-400">eco</span>
-                環境減碳效益 (本週)
-              </h3>
-              <p className="text-3xl font-bold text-green-400">
-                2,450 <span className="text-lg font-normal text-white/60">kgCO₂e</span>
-              </p>
-            </div>
+            
+            {/* 使用新封裝的減碳效益區塊，取代舊的兩個卡片 */}
+            <CarbonReductionSection totalGeneration={stats.total_kwh} />
 
             <section>
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">

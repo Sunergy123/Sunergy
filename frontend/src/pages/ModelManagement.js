@@ -164,7 +164,7 @@ export default function ModelManagement({
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 border-b border-white/10 pb-6">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">模型管理中心</h1>
-            <p className="text-white/40 text-sm mt-1">管理與追蹤所有已訓練完成的 AI 預測模型</p>
+            <p className="text-white/40 text-sm mt-1">管理與追蹤所有已訓練完成的模型</p>
           </div>
 
           <div className="mt-4 md:mt-0 flex gap-4">

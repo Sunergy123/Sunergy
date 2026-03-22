@@ -36,17 +36,27 @@ function App() {
 
   // 登入持久化檢查 (從 App2.js 帶入)
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    const storedPage = localStorage.getItem("currentPage");
-    if (storedUser) {
+    
+    // 1. 優先檢查 sessionStorage (分頁關掉就沒了)
+    const sessionUser = sessionStorage.getItem("user");
+    const sessionPage = sessionStorage.getItem("currentPage");
+
+    if (sessionUser) {
       try {
-        const userData = JSON.parse(storedUser);
+        const userData = JSON.parse(sessionUser);
         setCurrentUser(userData);
         setIsLoggedIn(true);
-        if (storedPage) setCurrentPage(storedPage);
+        if (sessionPage) setCurrentPage(sessionPage);
       } catch (e) {
-        localStorage.removeItem("user");
+        sessionStorage.removeItem("user");
       }
+    } else {
+      // 2. 重要：如果 session 沒資料，代表是新開的分頁
+      // 這時我們要強制清除 localStorage，防止舊的「持久化」資料干擾
+      localStorage.clear(); 
+      setIsLoggedIn(false);
+      setCurrentUser(null);
+      setCurrentPage('home'); // 回到首頁
     }
   }, []);
 
@@ -55,29 +65,31 @@ function App() {
   // ==============================
   const navigate = (page) => {
     setCurrentPage(page);
-    localStorage.setItem("currentPage", page);
+    sessionStorage.setItem("currentPage", page);
     window.scrollTo(0, 0);
   };
 
   const handleLogout = () => {
     setIsLoggedIn(false);
     setCurrentUser(null);
-    localStorage.removeItem("user");
-    localStorage.removeItem("currentPage");
+    sessionStorage.removeItem("user");
+    sessionStorage.removeItem("currentPage"); 
+    sessionStorage.clear();
+    localStorage.clear();
     navigate("home");
   };
 
   const handleLoginSuccess = (user) => {
     // 1. 在寫入新使用者資訊前，先清除所有舊的緩存資料
     // 這會移除舊的 currentPage, lastDataId 以及任何先前留下的狀態
-    localStorage.clear(); 
+    sessionStorage.clear();
 
     // 2. 更新 React 狀態
     setIsLoggedIn(true);
     setCurrentUser(user);
 
     // 3. 儲存新的使用者登入資訊
-    localStorage.setItem("user", JSON.stringify(user));
+    sessionStorage.setItem("user", JSON.stringify(user));
 
     // 4. 強制將頁面導向 Dashboard (首頁)，避免停留在先前的訓練流程頁面
     setIsLoginModalOpen(false);

@@ -1,7 +1,18 @@
 import React from 'react';
 import Navbar from '../components/Navbar';
 
-export default function DataVariableGuide({ onBack, onNext, onNavigateToPredict, onNavigateToSites, onLogout }) {
+export default function DataVariableGuide({ 
+  onBack, 
+  onNext, 
+  onNavigateToDashboard, 
+  onNavigateToPredict,
+  onNavigateToSites,
+  onNavigateToTrain,     
+  onNavigateToModelMgmt, 
+  onLogout,
+  restoredFromVisualization = false,
+}) 
+  {
   const requiredVariables = [
     { code: 'GI', name: 'Global Irradiance', desc: '全天空日照強度，是影響發電量的核心因素。', icon: 'wb_sunny' },
     { code: 'TM', name: 'Temperature', desc: '環境或模組溫度，用於校正光電轉換效率。', icon: 'device_thermostat' },
@@ -11,11 +22,13 @@ export default function DataVariableGuide({ onBack, onNext, onNavigateToPredict,
   return (
     <div className="min-h-screen w-full bg-background-dark text-white flex flex-col">
       <Navbar 
-        activePage="predict"
-        onNavigateToDashboard={onBack}
+        activePage="start-predict"
+        onNavigateToDashboard={onNavigateToDashboard} 
         onNavigateToPredict={onNavigateToPredict}
         onNavigateToSites={onNavigateToSites}
         onLogout={onLogout}
+        onNavigateToTrain={onNavigateToTrain} 
+        onNavigateToModelMgmt={onNavigateToModelMgmt}
       />
 
       <main className="flex-1 w-full max-w-4xl mx-auto p-6 py-12 flex flex-col gap-10">

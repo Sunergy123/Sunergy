@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
 
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = "http://localhost:8000";
 
 export default function Sites({
   onNavigateToDashboard,
   onNavigateToPredict,
   onNavigateToSites,
   onLogout,
+  onNavigateToModelMgmt,
+  onNavigateToTrain,
   onOpenCreateSite,
   onOpenEditSite,
   user,
@@ -102,17 +104,22 @@ export default function Sites({
   return (
     <div className="min-h-screen w-full bg-background-dark text-white flex flex-col">
       <Navbar
-        activePage="site"
+        activePage="sites"
         onNavigateToDashboard={onNavigateToDashboard}
         onNavigateToPredict={onNavigateToPredict}
         onNavigateToSites={onNavigateToSites}
+        onNavigateToTrain={onNavigateToTrain}
+        onNavigateToModelMgmt={onNavigateToModelMgmt}
         onLogout={onLogout}
       />
 
       <main className="flex-1 w-full max-w-7xl mx-auto p-6 py-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold">我的案場管理</h1>
+           <div>
+            <h1 className="text-3xl font-bold tracking-tight">案場管理中心</h1>
+            <p className="text-white/40 text-sm mt-1">新增刪除修改所有已建立的案場</p>
+          </div>
 
           <button
             onClick={onOpenCreateSite}
@@ -225,12 +232,17 @@ export default function Sites({
                       刪除案場
                     </button>
 
-                    <button
-                      onClick={onNavigateToPredict}
-                      className="px-4 py-2 text-xs bg-white/10 rounded"
+                    {/* <button
+                      onClick={() => {
+                        // 1. 先將選擇的案場 ID 存入快取，讓後續流程知道要用哪個案場
+                        localStorage.setItem("lastSelectedSite", site.site_id);
+                        // 2. 導向訓練流程的第一步 (data-guide)
+                        onNavigateToTrain(); 
+                      }}
+                      className="px-4 py-2 text-xs bg-primary text-background-dark font-bold rounded hover:scale-105 transition"
                     >
-                      以此案場開始預測 →
-                    </button>
+                      以此案場進行訓練模型 →
+                    </button> */}
                   </div>
                 </div>
               )}
@@ -309,7 +321,7 @@ export default function Sites({
         </div>
       )}
 
-      {/* ✅ 批次刪除 Modal（重點） */}
+      {/*  批次刪除 Modal（重點） */}
       {confirmBatchDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-[#1E1E1E] rounded-xl p-6 w-full max-w-sm">
@@ -405,14 +417,16 @@ export default function Sites({
               </button>
             ) : (
               <button
-                onClick={onNavigateToPredict}
-                className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-bold text-background-dark hover:scale-105"
-              >
-                <span className="material-symbols-outlined !text-lg">
-                  play_arrow
-                </span>
-                開始預測
-              </button>
+                  onClick={() => {
+                    // ✅ 勾選一個時的行為同步修改
+                    localStorage.setItem("lastSelectedSite", selectedSiteIds[0]);
+                    onNavigateToTrain();
+                  }}
+                  className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-bold text-background-dark hover:scale-105"
+                >
+                  <span className="material-symbols-outlined !text-lg">model_training</span>
+                  開始訓練模型
+                </button>
             )}
           </div>
         </div>

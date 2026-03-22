@@ -17,32 +17,7 @@ const StatusLight = ({ wmape }) => {
   );
 };
 
-// --- 輔助組件：日照 vs 發電量圖表 ---
-// const SolarProductionChart = ({ results, activeLines }) => {
-//   const modelColors = { LSTM: '#60a5fa', XGBoost: '#34d399', RandomForest: '#f2cc0d', SVR: '#a78bfa' };
-//   return (
-//     <div className="w-full h-80 bg-black/40 rounded-xl p-6 border border-white/10 relative mt-4">
-//       <div className="absolute left-2 top-1/2 -translate-y-1/2 -rotate-90 text-[10px] text-white/40 tracking-widest">發電量 (kWh)</div>
-//       <svg viewBox="0 0 400 150" className="w-full h-full" preserveAspectRatio="none">
-//         <line x1="20" y1="140" x2="400" y2="140" stroke="white" strokeOpacity="0.2" />
-//         <line x1="20" y1="10" x2="20" y2="140" stroke="white" strokeOpacity="0.2" />
-//         {Object.entries(results).map(([id, res]) => activeLines[id] && (
-//           <path
-//             key={id}
-//             d={`M 20 ${130 - (Math.random()*10)} Q 100 ${110 - (Math.random()*30)}, 200 ${70 - (Math.random()*20)}, 400 ${10 + (Math.random()*20)}`}
-//             fill="none"
-//             stroke={modelColors[id] || '#fff'}
-//             strokeWidth="2"
-//             className="transition-all duration-500"
-//           />
-//         ))}
-//       </svg>
-//       <div className="text-center text-[10px] text-white/40 tracking-widest mt-2">日照量 (W/m²)</div>
-//     </div>
-//   );
-// };
 
-// --- 輔助組件：可拉動雙點區間調整器 ---
 const IntervalSlider = ({ label, min, max, start, end, onStartChange, onEndChange, step = 1 }) => {
   const startPct = ((start - min) / (max - min)) * 100;
   const endPct = ((end - min) / (max - min)) * 100;
@@ -249,7 +224,36 @@ export default function ModelTraining({ onBack, onNext, onNavigateToDashboard, o
       setIsTraining(false);
     }
   };
-
+  const metricExplanations = [
+  {
+    id: 'R² Score',
+    name: '決定係數',
+    desc: '衡量模型解釋資料變異的能力。越接近 1 代表模型擬合度越高，預測越準確。',
+    formula: '1 - (SS_res / SS_tot)',
+    color: 'text-green-400'
+  },
+  {
+    id: 'RMSE',
+    name: '均方根誤差',
+    desc: '衡量預測值與真實值間的平均差距。單位與發電量一致 (kW)，數值越小代表誤差越低。',
+    formula: 'sqrt(mean((y_true - y_pred)²))',
+    color: 'text-blue-400'
+  },
+  {
+    id: 'MAE',
+    name: '平均絕對殘差',
+    desc: '預測值與真實值差距的絕對值平均。較不受極端值影響，能直觀反映平均誤差大小。',
+    formula: 'mean(abs(y_true - y_pred))',
+    color: 'text-purple-400'
+  },
+  {
+    id: 'WMAPE',
+    name: '加權平均絕對百分比誤差',
+    desc: '將總絕對誤差除以總實際發電量。相對於 MAPE，它解決了實際值為 0 時的計算問題。',
+    formula: 'sum(abs(error)) / sum(abs(actual))',
+    color: 'text-yellow-500'
+  }
+];
   return (
     <div className="min-h-screen w-full bg-background-dark text-white flex flex-col font-sans">
       <Navbar activePage="predict" onNavigateToDashboard={onNavigateToDashboard} onNavigateToPredict={onNavigateToPredict} onLogout={onLogout} onNavigateToSites={onNavigateToSites} />
@@ -542,6 +546,40 @@ export default function ModelTraining({ onBack, onNext, onNavigateToDashboard, o
         </div>
       </div>
     ))}
+</div>
+<div className="mt-12 pt-8 border-t border-white/10">
+  <div className="flex items-center gap-2 mb-6 text-white/60">
+    <span className="material-symbols-outlined !text-xl">help_outline</span>
+    <h3 className="text-sm font-bold tracking-widest uppercase">模型評估指標說明</h3>
+  </div>
+  
+{/* --- 模型評估指標說明 --- */}
+<div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8">
+  {metricExplanations.map((metric) => (
+    <div 
+      key={metric.id} 
+      className="p-8 rounded-2xl border border-white/10 bg-white/[0.04] hover:border-primary/40 transition-all group"
+    >
+      <div className="flex flex-col gap-3 mb-5">
+        <div className="flex items-center gap-4">
+          {/* ID 設為最大：text-2xl (約 24px) */}
+          <span className={`text-2xl font-black px-4 py-1 rounded-xl ${metric.bg} ${metric.color} tracking-tight`}>
+            {metric.id}
+          </span>
+          {/* Name 設為次大：text-lg (約 18px) */}
+          <h5 className="text-lg font-bold text-white/90">
+            {metric.name}
+          </h5>
+        </div>
+      </div>
+      
+      {/* 描述文字：text-lg (約 18px) */}
+      <p className="text-lg text-white/60 leading-relaxed">
+        {metric.desc}
+      </p>
+    </div>
+  ))}
+</div>
 </div>
               </div>
             ) : (

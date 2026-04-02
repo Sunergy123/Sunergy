@@ -13,6 +13,7 @@ export default function StartPredict({
   onNavigateToModelMgmt, 
   onLogout,
   restoredFromVisualization = false,
+  fromSite = false,
 }) {
   const [activeTab, setActiveTab] = useState("existing");
   const [sites, setSites] = useState([]);
@@ -45,37 +46,30 @@ export default function StartPredict({
     localStorage.removeItem("lastUploadedFile");
     localStorage.removeItem("lastDataId");
     localStorage.removeItem("lastFeatures");
-    localStorage.removeItem("lastOriginalFeatures"); // 🔥
+    localStorage.removeItem("lastOriginalFeatures");
     localStorage.removeItem("lastRows");
-    localStorage.removeItem("lastSelectedSite");
   };
 
   useEffect(() => {
-    if (!restoredFromVisualization) {
+    if (!restoredFromVisualization && !fromSite) {
       clearPredictCache();
+
       setFile(null);
       setFileName("");
       setFeatures([]);
-      setOriginalFeatures([]); // 🔥
+      setOriginalFeatures([]);
       setRows(null);
-      setSelectedSite("");
-    } else {
-      const savedFileName = localStorage.getItem("lastUploadedFile");
-      const savedFeatures = localStorage.getItem("lastFeatures");
-      const savedOriginal = localStorage.getItem("lastOriginalFeatures"); // 🔥
-      const savedRows = localStorage.getItem("lastRows");
-      const savedSite = localStorage.getItem("lastSelectedSite");
 
-      if (savedFileName) {
-        setFileName(savedFileName);
-        setFile({ name: savedFileName, status: "上傳成功" });
-      }
-      if (savedFeatures) setFeatures(JSON.parse(savedFeatures));
-      if (savedOriginal) setOriginalFeatures(JSON.parse(savedOriginal)); // 🔥
-      if (savedRows) setRows(Number(savedRows));
-      if (savedSite) setSelectedSite(savedSite);
+      setSelectedSite(""); // 只有「不是從案場來」才清
     }
-  }, [restoredFromVisualization]);
+
+    if (fromSite) {
+      const savedSite = localStorage.getItem("selectedSiteId");
+      if (savedSite) {
+        setSelectedSite(savedSite);
+      }
+    }
+  }, [restoredFromVisualization, fromSite]);
 
   /* ==================== 載入案場列表 ==================== */
   useEffect(() => {
@@ -84,9 +78,19 @@ export default function StartPredict({
 
     fetch(`http://127.0.0.1:8000/site/list?user_id=${uid}`)
       .then((res) => res.json())
-      .then((data) => setSites(Array.isArray(data) ? data : []))
+      .then((data) => {
+        setSites(Array.isArray(data) ? data : []);
+
+        // ⭐ 只有從案場進來才還原
+        if (fromSite) {
+          const savedSite = localStorage.getItem("selectedSiteId");
+          if (savedSite) {
+            setSelectedSite(savedSite);
+          }
+        }
+      })
       .catch(() => setSites([]));
-  }, []);
+  }, [fromSite]);
 
   /* ==================== 建立新案場 ==================== */
   const createNewSite = async () => {
@@ -244,7 +248,12 @@ export default function StartPredict({
 
         {/* Step 1 */}
         <div className="rounded-xl border border-white/10 bg-white/[.02] p-6 sm:p-8">
-          <h2 className="text-xl font-bold mb-6">步驟一：選擇或建立案場</h2>
+          {fromSite && (
+            <div>
+              <h2 className="text-xl font-bold mb-6">步驟一：選擇或建立案場</h2>
+              {/* 原本整塊 UI */}
+            </div>
+          )}
 
           <div className="flex rounded-lg bg-white/5 p-1 w-full">
             <button

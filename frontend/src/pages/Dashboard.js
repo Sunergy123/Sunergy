@@ -249,7 +249,7 @@ export default function Dashboard({
             <p className="text-sm text-white/40">我的案場概況</p>
           </div>
           <button
-            onClick={onNavigateToTrain}
+            onClick={() => onNavigateToTrain({ fromSite: false })}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-background-dark text-sm font-bold transition-transform hover:scale-105"
           >
             <span className="material-symbols-outlined !text-lg font-bold">play_arrow</span>

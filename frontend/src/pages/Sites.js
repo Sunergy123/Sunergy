@@ -12,6 +12,7 @@ export default function Sites({
   onNavigateToTrain,
   onOpenCreateSite,
   onOpenEditSite,
+  onSelectSite,
   user,
 }) {
   const [sites, setSites] = useState([]);
@@ -418,9 +419,13 @@ export default function Sites({
             ) : (
               <button
                   onClick={() => {
-                    // ✅ 勾選一個時的行為同步修改
-                    localStorage.setItem("lastSelectedSite", selectedSiteIds[0]);
-                    onNavigateToTrain();
+                    const selected = sites.find(s => s.site_id === selectedSiteIds[0]);
+
+                    if (!selected) return;
+
+                    localStorage.setItem("selectedSiteId", selected.site_id);
+
+                    onSelectSite(selected);
                   }}
                   className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-bold text-background-dark hover:scale-105"
                 >

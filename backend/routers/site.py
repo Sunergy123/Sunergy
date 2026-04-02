@@ -312,34 +312,42 @@ def update_site(site_id: int, payload: UpdateSite, db: Session = Depends(get_db)
 # =========================
 @router.delete("/{site_id}")
 def delete_site(site_id: int, db: Session = Depends(get_db)):
-    # 1. 檢查案場是否存在
     site = db.query(Site).filter(Site.site_id == site_id).first()
     if not site:
         raise HTTPException(status_code=404, detail="找不到案場資料")
 
     try:
-        # 2. 依照外鍵層級依序刪除關聯資料，避免 500 錯誤
-        
-        # (A) 刪除訓練好的模型紀錄
-        db.query(TrainedModel).filter(TrainedModel.site_id == site_id).delete()
-        
-        # (B) 刪除清洗後的資料紀錄 (AfterData)
+        # (A) 刪除 TrainedModel（用 join）
+        models = (
+            db.query(TrainedModel)
+            .outerjoin(AfterData, TrainedModel.after_id == AfterData.after_id)
+            .outerjoin(SiteData, TrainedModel.upload_id == SiteData.upload_id)
+            .filter(
+                (AfterData.site_id == site_id) |
+                (SiteData.site_id == site_id)
+            )
+            .all()
+        )
+        for m in models:
+            db.delete(m)
+
+        # (B) 刪 AfterData
         db.query(AfterData).filter(AfterData.site_id == site_id).delete()
-        
-        # (C) 刪除原始發電數據 (SiteData) - 這會讓 Dashboard 減碳量歸零
+
+        # (C) 刪 SiteData
         db.query(SiteData).filter(SiteData.site_id == site_id).delete()
 
-        # (D) 最後刪除案場本體
+        # (D) 刪 Site
         db.delete(site)
-        
-        # 3. 提交變更
+
         db.commit()
-        return {"message": "案場及其所有關聯數據已成功刪除", "site_id": site_id}
+
+        return {
+            "message": "案場及其所有關聯數據已成功刪除",
+            "site_id": site_id
+        }
 
     except Exception as e:
         db.rollback()
-        # 輸出具體錯誤到後端終端機，方便除錯
         print(f"刪除案場時發生錯誤: {str(e)}")
         raise HTTPException(status_code=500, detail=f"伺服器內部錯誤: {str(e)}")
-
-    return {"message": "site deleted", "site_id": site_id}

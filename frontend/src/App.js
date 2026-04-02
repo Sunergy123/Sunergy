@@ -33,6 +33,8 @@ function App() {
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [isCreateSiteModalOpen, setIsCreateSiteModalOpen] = useState(false);
   const [editingSite, setEditingSite] = useState(null); // 案場編輯狀態
+  const [selectedSite, setSelectedSite] = useState(null);
+  const [fromSite, setFromSite] = useState(false);
 
   // 登入持久化檢查 (從 App2.js 帶入)
   useEffect(() => {
@@ -151,7 +153,10 @@ function App() {
       activePage: currentPage,
       user: currentUser,
       onNavigateToDashboard: () => navigate('dashboard'),
-      onNavigateToTrain: () => navigate('data-guide'), // 訓練流程起點
+      onNavigateToTrain: () => {
+        setFromSite(false);   // ⭐ 這行
+        navigate('data-guide');
+      },
       onNavigateToPredict: () => navigate('predict-solar'),
       onNavigateToSites: () => navigate('site'),
       onNavigateToModelMgmt: () => navigate('model-mgmt'),
@@ -163,7 +168,7 @@ function App() {
         return <Dashboard {...commonNavbarProps} onOpenCreateSite={() => setIsCreateSiteModalOpen(true)} />;
       
       case 'site':
-        return <Sites {...commonNavbarProps} onOpenCreateSite={() => setIsCreateSiteModalOpen(true)} onOpenEditSite={setEditingSite} />;
+        return <Sites {...commonNavbarProps} onOpenCreateSite={() => setIsCreateSiteModalOpen(true)} onOpenEditSite={setEditingSite} onSelectSite={(site) => { setSelectedSite(site); setFromSite(true); navigate('start-predict'); }} />;
       
       case 'model-mgmt': 
         return <ModelManagement {...commonNavbarProps} />;
@@ -176,7 +181,7 @@ function App() {
         return <DataVariableGuide {...commonNavbarProps} onBack={() => navigate('dashboard')} onNext={() => navigate('start-predict')} />;
 
       case 'start-predict': // (2) 上傳資料
-        return <StartPredict {...commonNavbarProps} onBack={() => navigate('data-guide')} onNext={() => navigate('data-cleaning')} />;
+        return <StartPredict {...commonNavbarProps} selectedSite={selectedSite} fromSite={fromSite} onBack={() => navigate('data-guide')} onNext={() => navigate('data-cleaning')} />;
       
       case 'data-cleaning':
         return <DataCleaning {...commonNavbarProps} 

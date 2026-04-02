@@ -53,14 +53,14 @@ def _processed_data_dir() -> Path:
     return base
 
 
-def _models_dir(data_id: int) -> Path:
-    p = Path(__file__).resolve().parent.parent / "uploads" / "models" / str(data_id)
+def _models_dir(source_type: str, source_id: int) -> Path:
+    p = Path(__file__).resolve().parent.parent / "uploads" / "models" / source_type / str(source_id)
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def _list_artifacts(data_id: int):
-    d = _models_dir(data_id)
+def _list_artifacts(source_type: str, source_id: int):
+    d = _models_dir(source_type, source_id)
     items = []
     for p in sorted(d.glob("*")):
         if p.suffix in {".joblib", ".json", ".pt"}:
@@ -131,3 +131,51 @@ def _validate_clean_data(df: pd.DataFrame, gi_col: str, tm_col: str, target_col:
             raise HTTPException(status_code=400, detail=f"column '{c}' cannot be parsed as float")
         if pd.isna(df[c]).any():
             raise HTTPException(status_code=400, detail=f"column '{c}' has NaN but data should be cleaned")
+
+def load_training_data(
+    db: Session,
+    source_type: str,
+    source_id: int
+) -> pd.DataFrame:
+
+    if source_type == "cleaned":
+        entry = db.query(AfterData).filter(AfterData.after_id == source_id).first()
+        if not entry:
+            raise HTTPException(status_code=404, detail="after_data not found")
+
+        df = _load_cleaned_csv(entry)
+
+        # ✅ 加這兩行（關鍵）
+        _validate_clean_data(df, "gi", "tm", "eac")
+        df = _ensure_time_features(df, "the_date")
+
+        return df
+
+    elif source_type == "raw":
+        from models import SiteData
+
+        rows = (
+            db.query(SiteData)
+            .filter(SiteData.upload_id == source_id)
+            .all()
+        )
+
+        if not rows:
+            raise HTTPException(status_code=404, detail="site_data not found")
+
+        df = pd.DataFrame([{
+            "the_date": r.the_date,
+            "the_hour": r.the_hour,
+            "gi": r.gi,
+            "tm": r.tm,
+            "eac": r.eac
+        } for r in rows])
+
+        # ✅ 一定要加（不然會炸）
+        _validate_clean_data(df, "gi", "tm", "eac")
+        df = _ensure_time_features(df, "the_date")
+
+        return df
+
+    else:
+        raise HTTPException(status_code=400, detail="invalid source_type")

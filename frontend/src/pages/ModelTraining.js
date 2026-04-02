@@ -168,7 +168,15 @@ export default function ModelTraining({ onBack, onNext, onNavigateToDashboard, o
       const res = await fetch('http://127.0.0.1:8000/train/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data_id: Number(dataId), split_ratio: Number(splitRatio) / 100, models: selectedModels, strategy, params, device })
+        body: JSON.stringify({
+          source_type: "cleaned",   // 🔥 新增
+          source_id: Number(dataId), // 🔥 改名
+          split_ratio: Number(splitRatio) / 100,
+          models: selectedModels,
+          strategy,
+          params,
+          device
+        })
       });
 
       clearInterval(progressInterval);

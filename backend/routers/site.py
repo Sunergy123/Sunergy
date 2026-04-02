@@ -7,7 +7,7 @@ import re
 import time
 
 from database import get_db
-from models import User, Site, SiteData, AfterData, TrainedModel
+from models import User, Site, SiteData, AfterData, TrainedModel, Upload
 from schemas import CreateSite, UpdateSite
 
 router = APIRouter(prefix="/site", tags=["Site"])
@@ -172,7 +172,16 @@ async def upload_site_data(
         }
     )
 
-    upload_id = int(time.time())
+    new_upload = Upload(
+        file_name=file.filename,
+        site_id=site_id
+    )
+
+    db.add(new_upload)
+    db.commit()
+    db.refresh(new_upload)
+
+    upload_id = new_upload.upload_id
     
     # 5️⃣ 日期轉換
     try:

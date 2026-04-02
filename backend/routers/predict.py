@@ -27,7 +27,7 @@ router = APIRouter(prefix="/train", tags=["Predict"])
 # ───────────────────────────────────────
 @router.post("/predict")
 def predict(payload: PredictRequest, db: Session = Depends(get_db)):
-    entry = db.query(AfterData).filter(AfterData.after_id == payload.data_id).first()
+    entry = db.query(AfterData).filter(AfterData.after_id == payload.source_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="after_id not found")
 

@@ -1,12 +1,14 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float, Date
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float, Date, CheckConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean
 
 
-
+# ======================
+# User
+# ======================
 class User(Base):
     __tablename__ = "user"
 
@@ -19,6 +21,9 @@ class User(Base):
     sites = relationship("Site", back_populates="owner")
 
 
+# ======================
+# Site
+# ======================
 class Site(Base):
     __tablename__ = "site"
 
@@ -32,15 +37,36 @@ class Site(Base):
 
     owner = relationship("User", back_populates="sites")
     site_data = relationship("SiteData", back_populates="site", cascade="all, delete")
+    uploads = relationship("Upload", back_populates="site")
 
 
+# ======================
+# Upload（⭐ 新核心）
+# ======================
+class Upload(Base):
+    __tablename__ = "upload"
+
+    upload_id = Column(Integer, primary_key=True, index=True)
+    site_id = Column(Integer, ForeignKey("site.site_id"), nullable=False)
+
+    file_name = Column(String, nullable=False)
+    upload_time = Column(DateTime, default=datetime.utcnow)
+
+    site = relationship("Site", back_populates="uploads")
+    data = relationship("SiteData", back_populates="upload")
+    after_data = relationship("AfterData", back_populates="upload")
+
+
+# ======================
+# SiteData（每一筆）
+# ======================
 class SiteData(Base):
     __tablename__ = "site_data"
 
     data_id = Column(Integer, primary_key=True, index=True)
-    site_id = Column(Integer, ForeignKey("site.site_id"), nullable=False)
 
-    upload_id = Column(Integer, nullable=False, index=True)   # ⭐ 新增
+    site_id = Column(Integer, ForeignKey("site.site_id"), nullable=False)
+    upload_id = Column(Integer, ForeignKey("upload.upload_id"), nullable=False)
 
     the_date = Column(Date, nullable=False)
     the_hour = Column(Integer, nullable=False)
@@ -50,20 +76,22 @@ class SiteData(Base):
     eac = Column(Float, nullable=True)
 
     data_name = Column(String, nullable=True)
-
     created_at = Column(DateTime, default=datetime.utcnow)
 
     site = relationship("Site", back_populates="site_data")
+    upload = relationship("Upload", back_populates="data")
 
+
+# ======================
+# AfterData（清洗後 dataset）
+# ======================
 class AfterData(Base):
     __tablename__ = "after_data"
 
     after_id = Column(Integer, primary_key=True, index=True)
+
     site_id = Column(Integer, ForeignKey("site.site_id"), nullable=False)
-
-
-    # 對應原始 site_data
-    data_id = Column(Integer, ForeignKey("site_data.data_id"), nullable=False)
+    upload_id = Column(Integer, ForeignKey("upload.upload_id"), nullable=False)
 
     after_name = Column(String, nullable=False)
 
@@ -71,26 +99,37 @@ class AfterData(Base):
     after_rows = Column(Integer, nullable=False)
     removed_ratio = Column(Float, nullable=False)
 
-    # ✅ 新欄位
-    outlier_method = Column(String, nullable=True)     # iqr / zscore / isolation_forest
-    gi_tm_applied = Column(Boolean, nullable=False)    # True / False
-    outlier_params = Column(JSONB, nullable=True)      # 係數
-    file_path = Column(String, nullable=True)          # 清洗後 CSV 檔案路徑
+    outlier_method = Column(String, nullable=True)
+    gi_tm_applied = Column(Boolean, nullable=False)
+    outlier_params = Column(JSONB, nullable=True)
+    file_path = Column(String, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    site_data = relationship("SiteData")
+    upload = relationship("Upload", back_populates="after_data")
 
 
+# ======================
+# TrainedModel（🔥 最重要）
+# ======================
 class TrainedModel(Base):
     __tablename__ = "trained_model"
 
     model_id = Column(Integer, primary_key=True, index=True)
 
-    site_id = Column(Integer, ForeignKey("site.site_id"), nullable=False)
-    data_id = Column(Integer, nullable=False)           # after_data.after_id
+    upload_id = Column(Integer, ForeignKey("upload.upload_id"), nullable=True)
+    after_id = Column(Integer, ForeignKey("after_data.after_id"), nullable=True)
 
-    model_type = Column(String, nullable=False)          # XGBoost / SVR / RandomForest / LSTM
-    parameters = Column(JSONB, nullable=True)            # best_params
-    file_path = Column(String, nullable=True)            # 模型檔案路徑
+    model_type = Column(String, nullable=False)
+    parameters = Column(JSONB, nullable=True)
+    file_path = Column(String, nullable=True)
+
     trained_at = Column(DateTime, default=datetime.utcnow)
+    usage_count = Column(Integer, default=0)
+
+    __table_args__ = (
+        CheckConstraint(
+            "(upload_id IS NOT NULL AND after_id IS NULL) OR (upload_id IS NULL AND after_id IS NOT NULL)",
+            name="check_data_source"
+        ),
+    )

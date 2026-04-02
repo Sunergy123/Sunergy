@@ -26,7 +26,7 @@ class CreateSite(BaseModel):
 # ===== Data Process =====
 
 class ProcessRequest(BaseModel):
-    data_id: int
+    upload_id: int
     method: str                 # 'iqr' | 'zscore' | 'isolation_forest' | 'default'
     params: Optional[Dict[str, Any]] = None
 
@@ -42,7 +42,8 @@ class UpdateSite(BaseModel):
 # ===== Train =====
 
 class TrainRequest(BaseModel):
-    data_id: int                                        # after_data.after_id
+    source_type: str   # "raw" 或 "cleaned"
+    source_id: int     # upload_id 或 after_id
     split_ratio: float = 0.8
     split_method: str = "random"                        # "random" | "time"
     models: List[str]                                   # ["XGBoost", "SVR", ...]
@@ -55,7 +56,8 @@ class TrainRequest(BaseModel):
     device: str = "auto"                                # "cpu" | "cuda" | "auto"
 
 class PredictRequest(BaseModel):
-    data_id: int
+    source_type: str   # "raw" 或 "cleaned"
+    source_id: int
     artifact: Optional[str] = None
     model_id: Optional[str] = None
     trained_at: Optional[str] = None

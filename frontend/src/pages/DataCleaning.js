@@ -544,14 +544,24 @@ export default function DataCleaning({
       return;
     }
 
+    const uploadId = localStorage.getItem("lastDataId"); // ⭐ 新增
+
+    if (!uploadId) {
+      alert("缺少 upload_id，請重新上傳資料");
+      return;
+    }
+
     setSaving(true);
     try {
       const body = {
         site_id: Number(siteId),
         file_name: fileName,
+        upload_id: Number(uploadId), // ⭐ 新增這行
+
         apply_outlier: applyOutlier,
         apply_gi_tm: applyGiTm,
         remove_outliers: true,
+
         ...(applyOutlier && {
           outlier_method: outlierMethod,
           iqr_factor: iqrFactor,

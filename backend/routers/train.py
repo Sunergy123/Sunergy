@@ -83,9 +83,12 @@ def train_info(data_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/models")
-def list_models(data_id: int):
-    return {"data_id": data_id, "artifacts": _list_artifacts(data_id)}
-
+def list_models(source_type: str, data_id: int):
+    return {
+        "data_id": data_id,
+        "source_type": source_type,
+        "artifacts": _list_artifacts(source_type, data_id)
+    }
 
 # ═══════════════════════════════════════
 #  模型管理端點
@@ -97,8 +100,13 @@ def delete_trained_model(
     db: Session = Depends(get_db)
 ):
     row = (
-        db.query(TrainedModel, Site)
-        .join(Site, TrainedModel.site_id == Site.site_id)
+        db.query(TrainedModel, Site, AfterData, SiteData)
+        .outerjoin(AfterData, TrainedModel.after_id == AfterData.after_id)
+        .outerjoin(SiteData, TrainedModel.upload_id == SiteData.upload_id)
+        .outerjoin(Site,
+            (AfterData.site_id == Site.site_id) |
+            (SiteData.site_id == Site.site_id)
+        )
         .filter(
             TrainedModel.model_id == model_id,
             Site.user_id == user_id
@@ -109,7 +117,7 @@ def delete_trained_model(
     if not row:
         raise HTTPException(status_code=404, detail="找不到此模型，或你沒有權限刪除")
 
-    model, site = row
+    model, site, after, site_data = row
 
     # 刪除模型檔案
     if model.file_path:
@@ -135,28 +143,34 @@ def list_trained_models(
     user_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    rows = (
-        db.query(TrainedModel, Site, AfterData)
-        .join(Site, TrainedModel.site_id == Site.site_id)
-        .outerjoin(AfterData, TrainedModel.data_id == AfterData.after_id)
-        .filter(Site.user_id == user_id)
+    models = (
+        db.query(TrainedModel)
         .order_by(TrainedModel.trained_at.desc())
         .all()
     )
 
     out = []
-    for model, site, after in rows:
 
-        if after:
-            file_name = after.after_name
-        else:
-            # 🔥 再查一次 SiteData（只查一筆，不會重複）
-            site_data = db.query(SiteData).filter(
-                SiteData.upload_id == model.data_id
-            ).first()
+    for model in models:
+        site = None
+        file_name = "未知檔案"
 
-            file_name = site_data.data_name if site_data else "未知檔案"
-    
+        if model.after_id:
+            after = db.query(AfterData).filter(AfterData.after_id == model.after_id).first()
+            if after:
+                site = db.query(Site).filter(Site.site_id == after.site_id).first()
+                file_name = after.after_name
+
+        elif model.upload_id:
+            site_data = db.query(SiteData).filter(SiteData.upload_id == model.upload_id).first()
+            if site_data:
+                site = db.query(Site).filter(Site.site_id == site_data.site_id).first()
+                file_name = site_data.data_name
+
+        # 🔥 只保留該使用者
+        if not site or site.user_id != user_id:
+            continue
+
         out.append({
             "model_id": model.model_id,
             "model_type": model.model_type,
@@ -182,8 +196,13 @@ def batch_delete_models(data: dict, db: Session = Depends(get_db)):
 
     # 🔥 只刪自己的模型（超重要）
     models = (
-        db.query(TrainedModel)
-        .join(Site, TrainedModel.site_id == Site.site_id)
+        db.query(TrainedModel, Site, AfterData, SiteData)
+        .outerjoin(AfterData, TrainedModel.after_id == AfterData.after_id)
+        .outerjoin(SiteData, TrainedModel.upload_id == SiteData.upload_id)
+        .outerjoin(Site,
+            (AfterData.site_id == Site.site_id) |
+            (SiteData.site_id == Site.site_id)
+        )
         .filter(
             TrainedModel.model_id.in_(model_ids),
             Site.user_id == user_id
@@ -195,10 +214,11 @@ def batch_delete_models(data: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="找不到可刪除的模型")
 
     # 刪檔案（跟你單筆一樣）
-    for model in models:
+    for model, site, after, site_data in models:
         if model.file_path:
             base_dir = Path(__file__).resolve().parent.parent
             artifact_path = base_dir / model.file_path
+
             if artifact_path.exists():
                 artifact_path.unlink()
 
@@ -423,8 +443,8 @@ def _train_single_model(model_id: str, X_train, y_train, X_test, y_test, strateg
 # ═══════════════════════════════════════
 @router.post("/run")
 def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
-    """payload.data_id = after_data.after_id"""
-    entry = db.query(AfterData).filter(AfterData.after_id == payload.data_id).first()
+    """payload.source_id = after_data.after_id"""
+    entry = db.query(AfterData).filter(AfterData.after_id == payload.source_id).first()
 
     data_source = "cleaned"
     cleaned_path = None
@@ -433,6 +453,7 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
     # 有清洗資料
     if entry:
         df = _load_cleaned_csv(entry)
+        df.columns = [c.upper() for c in df.columns]
         cleaned_path = entry.file_path
         site_id = entry.site_id
 
@@ -440,7 +461,7 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
     else:
         rows = (
             db.query(SiteData)
-            .filter(SiteData.upload_id == payload.data_id)
+            .filter(SiteData.upload_id == payload.source_id)
             .all()
         )
 
@@ -457,6 +478,7 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
             "the_date": r.the_date,
             "the_hour": r.the_hour
         } for r in rows])
+        df.columns = [c.upper() for c in df.columns]
     target_col = payload.target or 'EAC'
     if target_col not in df.columns:
         raise HTTPException(status_code=400, detail=f"target column '{payload.target}' not found")
@@ -539,7 +561,7 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
         saved = []
         save_errors = []
         timestamp = _dt.utcnow().strftime('%Y%m%d_%H%M%S%f')
-        models_dir = _models_dir(payload.data_id)
+        models_dir = _models_dir(data_source, payload.source_id)
         for mid, res in results.items():
             if res.get('status') != 'ok':
                 continue
@@ -615,14 +637,23 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
 
         for art in saved:
             try:
-                tm = TrainedModel(
-                    site_id=site_id,
-                    data_id=payload.data_id,
-                    model_type=art.get('model_id'),
-                    parameters=results.get(art.get('model_id'), {}).get('best_params', {}),
-                    file_path=str(Path("uploads") / "models" / str(payload.data_id) / art.get('artifact')),
-                    trained_at=datetime.now(TW_TIMEZONE).replace(tzinfo=None),
-                )
+                tm_data = {
+                    "model_type": art.get('model_id'),
+                    "parameters": results.get(art.get('model_id'), {}).get('best_params', {}),
+                    "file_path": str(
+                        Path("uploads") / "models" / data_source / str(payload.source_id) / art.get('artifact')
+                    ),
+                    "trained_at": datetime.now(TW_TIMEZONE).replace(tzinfo=None),
+                }
+
+                if data_source == "cleaned":
+                    tm_data["after_id"] = payload.source_id
+                    tm_data["upload_id"] = None
+                else:
+                    tm_data["upload_id"] = payload.source_id
+                    tm_data["after_id"] = None
+
+                tm = TrainedModel(**tm_data)
                 db.add(tm)
             except Exception as e:
                 db.rollback()
@@ -641,7 +672,7 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
         warnings.extend(save_errors)
 
     return _to_native({
-        "data_id": payload.data_id,
+        "data_id": payload.source_id,
         "data_source": data_source,
         "cleaned_file": cleaned_path,
         "split": {

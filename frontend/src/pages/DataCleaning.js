@@ -448,9 +448,13 @@ export default function DataCleaning({
   fileName: propFileName,
   onBack,
   onNext,
-  onNavigateToPredict,
-  onNavigateToSites,
   onLogout,
+  onNavigateToTrain,
+  onNavigateToDashboard,
+  onNavigateToSites,
+  onOpenCreateSite,
+  onNavigateToPredict,
+  onNavigateToModelMgmt,
 }) {
   const [applyGiTm, setApplyGiTm] = useState(false);
   const [applyOutlier, setApplyOutlier] = useState(false);
@@ -736,7 +740,15 @@ export default function DataCleaning({
 
   return (
     <div className="min-h-screen bg-background-dark text-white">
-      <Navbar />
+      <Navbar
+        activePage="data-cleaning"
+        onNavigateToDashboard={onNavigateToDashboard}
+        onNavigateToTrain={onNavigateToTrain}
+        onNavigateToSites={onNavigateToSites}
+        onNavigateToPredict={onNavigateToPredict}
+        onNavigateToModelMgmt={onNavigateToModelMgmt}
+        onLogout={onLogout}
+      />
 
       <div className="w-full border-b border-white/10 bg-white/[.02] px-6 py-3 sticky top-[64px] sm:top-[65px] z-40 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between">

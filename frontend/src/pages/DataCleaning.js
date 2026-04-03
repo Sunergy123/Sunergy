@@ -461,6 +461,7 @@ export default function DataCleaning({
   onNavigateToPredict,
   onNavigateToModelMgmt,
 }) {
+  const [tmAllZero, setTmAllZero] = useState(false);
 
   const [siteName] = useState(
     localStorage.getItem("selectedSiteName") || ""
@@ -555,6 +556,11 @@ export default function DataCleaning({
 
         const data = await res.json();
         setStages(data.stages);
+
+        setTmAllZero(data.tm_all_zero);
+
+        setTmAllZero(data.tm_all_zero);
+
       } catch (err) {
         console.error(err);
         alert("載入資料失敗，請確認 site_id 與檔案是否存在");
@@ -891,8 +897,15 @@ export default function DataCleaning({
                 type="checkbox"
                 checked={applyGiTm}
                 onChange={(e) => {
-                  setApplyGiTm(e.target.checked);
-                  if (!e.target.checked) setApplyOutlier(false);
+                  const checked = e.target.checked;
+
+                  if (checked && tmAllZero) {
+                    alert("⚠️ TM 全部為 0，無法進行補值");
+                  }
+
+                  setApplyGiTm(checked);
+
+                  if (!checked) setApplyOutlier(false);
                 }}
                 className="w-5 h-5"
               />

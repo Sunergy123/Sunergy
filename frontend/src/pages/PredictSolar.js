@@ -76,7 +76,16 @@ const getErrorColor = (pct) => {
   return { bg: 'FFC7CE', fg: '9C0006' };                // 紅
 };
 
-export default function PredictSolar({ onBack, onNavigateToDashboard, onLogout, onNavigateToSites, onNavigateToTrain, onNavigateToPredict, onNavigateToModelMgmt }) {
+export default function PredictSolar({ 
+  activePage,
+  onBack,
+  onNavigateToDashboard, 
+  onLogout, 
+  onNavigateToSites, 
+  onNavigateToTrain, 
+  onNavigateToPredict, 
+  onNavigateToModelMgmt 
+}){
   const [file, setFile] = useState(null);
   const [selectedModelIds, setSelectedModelIds] = useState([]);
 
@@ -428,28 +437,29 @@ export default function PredictSolar({ onBack, onNavigateToDashboard, onLogout, 
 
   return (
     <div className="min-h-screen w-full bg-background-dark text-white flex flex-col font-sans">
-      <Navbar activePage="predict" {...navProps} />
+      <Navbar activePage={activePage} {...navProps} />
 
       {/* [新增] Sticky Header 步驟指示器 */}
-      <div className="w-full border-b border-white/10 bg-white/[.02] px-6 py-3 sticky top-[64px] sm:top-[65px] z-40 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-1 text-sm text-white/50 hover:text-white transition-colors">
-            <span className="material-symbols-outlined !text-lg">arrow_back</span>
-            返回上一步
-          </button>
+      {activePage === 'model-training' && (
+        <div className="w-full border-b border-white/10 bg-white/[.02] px-6 py-3 sticky top-[64px] sm:top-[65px] z-40 backdrop-blur-md">
+          <div className="mx-auto flex max-w-7xl items-center justify-between">
+            <button onClick={onBack} className="flex items-center gap-1 text-sm text-white/50 hover:text-white transition-colors">
+              <span className="material-symbols-outlined !text-lg">arrow_back</span>
+              返回上一步
+            </button>
 
-          <div className="text-sm font-medium">
-            <span className="text-white/40">1. 上傳資料</span>
-            <span className="mx-2 text-white/30">/</span>
-            <span className="text-white/40">2. 清理資料</span>
-            <span className="mx-2 text-white/30">/</span>
-            <span className="text-white/40">3. 模型訓練</span>
-            <span className="mx-2 text-white/30">/</span>
-            <span className="text-primary font-bold">4. 預測發電量</span>
+            <div className="text-sm font-medium">
+              <span className="text-white/40">1. 上傳資料</span>
+              <span className="mx-2 text-white/30">/</span>
+              <span className="text-white/40">2. 清理資料</span>
+              <span className="mx-2 text-white/30">/</span>
+              <span className="text-white/40">3. 模型訓練</span>
+              <span className="mx-2 text-white/30">/</span>
+              <span className="text-primary font-bold">4. 預測發電量</span>
 
+            </div>
           </div>
-        </div>
-      </div>
+        </div>)}
 
       <main className="flex-1 w-full max-w-[1400px] mx-auto p-6 py-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 

@@ -49,7 +49,16 @@ const IntervalSlider = ({ label, min, max, start, end, onStartChange, onEndChang
   );
 };
 
-export default function ModelTraining({ onBack, onNext, onNavigateToDashboard, onNavigateToPredict, onLogout, onNavigateToSites }) {
+export default function ModelTraining({
+  onBack,
+  onNext,
+  onNavigateToDashboard,
+  onNavigateToPredict,
+  onNavigateToModelMgmt,
+  onLogout,
+  onNavigateToSites,
+  activePage
+}){
   const [splitRatio, setSplitRatio] = useState(80);
   const [selectedModels, setSelectedModels] = useState(['XGBoost']);
   const [paramIntervals, setParamIntervals] = useState({
@@ -243,7 +252,14 @@ export default function ModelTraining({ onBack, onNext, onNavigateToDashboard, o
 ];
   return (
     <div className="min-h-screen w-full bg-background-dark text-white flex flex-col font-sans">
-      <Navbar activePage="predict" onNavigateToDashboard={onNavigateToDashboard} onNavigateToPredict={onNavigateToPredict} onLogout={onLogout} onNavigateToSites={onNavigateToSites} />
+      <Navbar 
+        activePage={activePage}
+        onNavigateToDashboard={onNavigateToDashboard}
+        onNavigateToPredict={onNavigateToPredict}
+        onNavigateToSites={onNavigateToSites}
+        onNavigateToModelMgmt={onNavigateToModelMgmt}
+        onLogout={onLogout}
+      />
 
       {/* [新增] Sticky Header 步驟指示器 */}
       <div className="w-full border-b border-white/10 bg-white/[.02] px-6 py-3 sticky top-[64px] sm:top-[65px] z-40 backdrop-blur-md">

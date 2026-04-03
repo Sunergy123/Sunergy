@@ -115,11 +115,7 @@ def clean_dataframe(
 
     if apply_gi_tm:
         df1 = df1[df1["GI"] > 0].copy()
-        df1.loc[df1["TM"] <= 0, "TM"] = np.nan
-        df1 = df1.sort_values(["the_date", "hour"])
-
-        if df1["TM"].notna().sum() >= 2:
-            df1["TM"] = df1["TM"].interpolate("linear", limit_direction="both")
+        df1 = fix_tm(df1)
 
     # Stage 2：離群值
     df2 = df1.copy()
@@ -292,15 +288,16 @@ def visualize_data(
     df = build_raw_dataframe(entries)
     if df.empty:
         raise HTTPException(status_code=404, detail="原始資料為空")
+    
+    tm_all_zero = False
+    if not df.empty:
+        tm_all_zero = bool((df["TM"] == 0).all())
 
     # ---------- correlation ----------
     corr_data = df.copy()
     if apply_gi_tm:
         corr_data = corr_data[corr_data["GI"] > 0].copy()
-        corr_data.loc[corr_data["TM"] <= 0, "TM"] = np.nan
-        corr_data = corr_data.sort_values(["the_date", "hour"])
-        if corr_data["TM"].notna().sum() >= 2:
-            corr_data["TM"] = corr_data["TM"].interpolate("linear", limit_direction="both")
+        corr_data = fix_tm(corr_data)
 
     corr_vars = ["EAC", "GI", "TM", "day", "hour", "month"]
     corr_base = corr_data[corr_vars].dropna()
@@ -322,10 +319,7 @@ def visualize_data(
     df1 = df.copy()
     if apply_gi_tm:
         df1 = df1[df1["GI"] > 0].copy()
-        df1.loc[df1["TM"] <= 0, "TM"] = np.nan
-        df1 = df1.sort_values(["the_date", "hour"])
-        if df1["TM"].notna().sum() >= 2:
-            df1["TM"] = df1["TM"].interpolate("linear", limit_direction="both")
+        df1 = fix_tm(df1)
 
     # ---------- Stage 0 ----------
     plots_raw = build_plots(
@@ -423,6 +417,7 @@ def visualize_data(
         {
             "site_id": site_id,
             "file_name": file_name,
+            "tm_all_zero": tm_all_zero,
             "stages": {
                 "raw": {
                     **plots_raw,
@@ -478,10 +473,7 @@ def save_cleaned_data(payload: dict, db: Session = Depends(get_db)):
     # Stage 1
     if apply_gi_tm:
         df = df[df["GI"] > 0].copy()
-        df.loc[df["TM"] <= 0, "TM"] = np.nan
-        df = df.sort_values(["the_date", "hour"])
-        if df["TM"].notna().sum() >= 2:
-            df["TM"] = df["TM"].interpolate("linear", limit_direction="both")
+        df = fix_tm(df)
 
     # Stage 2
     cols = ["EAC", "GI", "TM"]
@@ -583,3 +575,24 @@ def save_cleaned_data(payload: dict, db: Session = Depends(get_db)):
             "file_path": str(csv_path),
         }
     )
+
+def fix_tm(df):
+    df = df.sort_values(["the_date", "hour"])
+    tm = df["TM"]
+
+    # ✅ Case 1：全部都是 0 → 保持 0
+    if (tm == 0).all():
+        df["TM"] = 0
+        return df
+
+    # ✅ <=0 當缺值
+    df.loc[df["TM"] <= 0, "TM"] = np.nan
+
+    # ✅ 線性補值（只做一次！）
+    if df["TM"].notna().sum() >= 2:
+        df["TM"] = df["TM"].interpolate("linear", limit_direction="both")
+
+    # ✅ 最後保底（避免 NaN）
+    df["TM"] = df["TM"].fillna(0)
+
+    return df

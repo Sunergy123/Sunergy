@@ -181,6 +181,7 @@ function App() {
         return (
           <PredictSolar
             {...commonNavbarProps}
+            activePage={predictFrom === 'training' ? 'model-training' : 'predict-solar'}
             onBack={() => {
               if (predictFrom === 'training') {
                 navigate('model-training');

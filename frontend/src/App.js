@@ -35,6 +35,7 @@ function App() {
   const [editingSite, setEditingSite] = useState(null); // 案場編輯狀態
   const [selectedSite, setSelectedSite] = useState(null);
   const [fromSite, setFromSite] = useState(false);
+  const [predictFrom, setPredictFrom] = useState(null);
 
   // 登入持久化檢查 (從 App2.js 帶入)
   useEffect(() => {
@@ -157,7 +158,10 @@ function App() {
         setFromSite(false);   // ⭐ 這行
         navigate('data-guide');
       },
-      onNavigateToPredict: () => navigate('predict-solar'),
+      onNavigateToPredict: () => {
+        setPredictFrom(null);   // ⭐ 重置來源
+        navigate('predict-solar');
+      },
       onNavigateToSites: () => navigate('site'),
       onNavigateToModelMgmt: () => navigate('model-mgmt'),
       onLogout: handleLogout
@@ -174,7 +178,18 @@ function App() {
         return <ModelManagement {...commonNavbarProps} />;
 
       case 'predict-solar':
-        return <PredictSolar {...commonNavbarProps} onBack={() => navigate('dashboard')} />;
+        return (
+          <PredictSolar
+            {...commonNavbarProps}
+            onBack={() => {
+              if (predictFrom === 'training') {
+                navigate('model-training');
+              } else {
+                navigate('dashboard');
+              }
+            }}
+          />
+        );
 
       /* --- 訓練流程五步驟 --- */
       case 'data-guide': // (1) 說明頁
@@ -187,8 +202,17 @@ function App() {
         return <DataCleaning {...commonNavbarProps} 
           onBack={() => navigate('start-predict')} 
           onNext={() => navigate('model-training')} />;
-            case 'model-training': // (5) 訓練
-        return <ModelTraining {...commonNavbarProps} onBack={() => navigate('data-cleaning')} onNext={() => navigate('predict-solar')} />;
+            case 'model-training':
+              return (
+                <ModelTraining
+                  {...commonNavbarProps}
+                  onBack={() => navigate('data-cleaning')}
+                  onNext={() => {
+                    setPredictFrom('training'); // ⭐ 記錄來源
+                    navigate('predict-solar');
+                  }}
+                />
+              );
 
       default:
         return <Dashboard {...commonNavbarProps} onOpenCreateSite={() => setIsCreateSiteModalOpen(true)} />;

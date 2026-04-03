@@ -258,10 +258,9 @@ export default function ModelTraining({ onBack, onNext, onNavigateToDashboard, o
             <span className="mx-2 text-white/30">/</span>
             <span className="text-white/40">2. 清理資料</span>
             <span className="mx-2 text-white/30">/</span>
-            <span className="text-white/40 ">3. 調整單位</span>
+            <span className="text-primary font-bold">3. 模型訓練</span>
             <span className="mx-2 text-white/30">/</span>
-            <span className="text-primary font-bold">4. 模型訓練</span>
-
+            <span className="text-white/40">4. 預測發電量</span>
           </div>
         </div>
       </div>

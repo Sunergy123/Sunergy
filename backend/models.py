@@ -127,6 +127,14 @@ class TrainedModel(Base):
     trained_at = Column(DateTime, default=datetime.utcnow)
     usage_count = Column(Integer, default=0)
 
+    rmse = Column(Float, nullable=True)
+    r2 = Column(Float, nullable=True)
+    mae = Column(Float, nullable=True)
+    wmape = Column(Float, nullable=True)
+
+    # 🔥 JSON（可選）
+    metrics = Column(JSONB, nullable=True)
+
     __table_args__ = (
         CheckConstraint(
             "(upload_id IS NOT NULL AND after_id IS NULL) OR (upload_id IS NULL AND after_id IS NOT NULL)",

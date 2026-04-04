@@ -169,6 +169,15 @@ export default function Dashboard({
             ? new Date(item.trained_at).toLocaleDateString('zh-TW')
             : '—';
 
+          const p = item.parameters || {};
+
+          const performance = `
+          R² ${p.r2 ?? '-'} ｜ 
+          RMSE ${p.rmse ?? '-'} ｜ 
+          MAE ${p.mae ?? '-'} ｜ 
+          WMAPE ${p.wmape ?? '-'}
+          `;
+
           return {
             id: item.model_id,
             name: `${item.model_type || '-'}_${item.model_id} ${
@@ -184,6 +193,10 @@ export default function Dashboard({
             usage: item.usage_count ?? 0,
             acc: item.parameters?.r2 ?? '—',
             fileName: item.file_name || '未知檔案',
+            r2: item.r2,
+            wmape: item.wmape,
+            rmse: item.rmse,
+            mae: item.mae,
             dataId: item.data_id,
             filePath: item.file_path,
             parameters: item.parameters || {},
@@ -291,11 +304,6 @@ export default function Dashboard({
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="text-lg font-bold">{model.name}</h3>
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded font-medium ${getStatusColor(model.status)}`}
-                          >
-                            {model.status}
-                          </span>
                         </div>
 
                         <p className="text-xs text-white/30 mt-1 font-mono">
@@ -374,9 +382,25 @@ export default function Dashboard({
                             </div> */}
                             <div>
                               <p className="text-[10px] text-white/30 uppercase leading-none mb-1">
-                                模型類型
+                                模型資訊
                               </p>
-                              <p className="text-sm text-white/70">{model.type}</p>
+
+                              <div className="text-sm text-white/70 font-mono space-y-1">
+
+                                {/* 第一行 */}
+                                <div className="break-words">
+                                  {model.fileName} ｜ {model.date}
+                                </div>
+
+                                {/* 第三行：指標（重點🔥） */}
+                                <div className="grid grid-cols-2 gap-x-4 text-xs text-green-400">
+                                  <span>R²: {model.r2 ?? '—'}</span>
+                                  <span>WMAPE: {model.wmape ?? '—'}</span>
+                                  <span>RMSE: {model.rmse ?? '—'}</span>
+                                  <span>MAE: {model.mae ?? '—'}</span>
+                                </div>
+
+                              </div>
                             </div>
                           </div>
                         </div>

@@ -181,7 +181,11 @@ def list_trained_models(
             "site_name": site.site_name if site else None,
             "location": site.location if site else None,
 
-            "file_name": file_name
+            "file_name": file_name,
+            "rmse": model.rmse,
+            "r2": model.r2,
+            "mae": model.mae,
+            "wmape": model.wmape,
         })
 
     return out
@@ -637,6 +641,7 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
 
         for art in saved:
             try:
+                model_result = results.get(art.get('model_id'), {})
                 tm_data = {
                     "model_type": art.get('model_id'),
                     "parameters": results.get(art.get('model_id'), {}).get('best_params', {}),
@@ -644,6 +649,18 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
                         Path("uploads") / "models" / data_source / str(payload.source_id) / art.get('artifact')
                     ),
                     "trained_at": datetime.now(TW_TIMEZONE).replace(tzinfo=None),
+                    "rmse": model_result.get("rmse"),
+                    "r2": model_result.get("r2"),
+                    "mae": model_result.get("mae"),
+                    "wmape": model_result.get("wmape"),
+
+                    # ✅ JSON（可選）
+                    "metrics": {
+                        "rmse": model_result.get("rmse"),
+                        "r2": model_result.get("r2"),
+                        "mae": model_result.get("mae"),
+                        "wmape": model_result.get("wmape"),
+                    }
                 }
 
                 if data_source == "cleaned":
@@ -674,7 +691,8 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
     return _to_native({
         "data_id": payload.source_id,
         "data_source": data_source,
-        "cleaned_file": cleaned_path,
+        "file_name": entry.after_name if entry else "raw_data",
+        "trained_at": datetime.now(TW_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S"),
         "split": {
             "train": float(payload.split_ratio),
             "test": 1.0 - float(payload.split_ratio),

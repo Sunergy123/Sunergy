@@ -58,18 +58,18 @@ export default function ModelManagement({
           ? new Date(item.trained_at).toLocaleDateString('zh-TW')
           : '-';
 
-        const bestAccuracy =
-          item.parameters?.best_accuracy ??
-          item.parameters?.r2 ??
-          item.parameters?.accuracy ??
-          null;
+        const metrics = {
+          r2: item.r2,
+          rmse: item.rmse,
+          mae: item.mae,
+          wmape: item.wmape
+        };
 
         return {
           id: item.model_id,
 
-          fileName:
-            item.file_name || '未知檔案',
-      
+          fileName: item.file_name || '未知檔案',
+
           siteDisplay:
             `${item.model_type || '-'}_${item.model_id} ` +
             (
@@ -80,10 +80,15 @@ export default function ModelManagement({
                   ? `[${item.site_name}]`
                   : '-')
             ),
+
           type: item.model_type || '-',
-          date: trainedDate,
-          accuracy: bestAccuracy !== null ? `${bestAccuracy}` : '-',
-          status: index === 0 ? '已部署' : '閒置中',
+
+          date: item.trained_at
+            ? new Date(item.trained_at).toLocaleString('zh-TW')
+            : '-',
+
+          metrics,
+
         };
       });
 
@@ -221,19 +226,10 @@ export default function ModelManagement({
                         <h3 className="text-lg font-bold text-white group-hover:text-primary transition-colors">
                           {model.siteDisplay}
                         </h3>
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase ${
-                            model.status === '已部署'
-                              ? 'bg-green-500/20 text-green-400'
-                              : 'bg-white/10 text-white/40'
-                          }`}
-                        >
-                          {model.status}
-                        </span>
                       </div>
 
                       <p className="text-xs text-white/40 mt-1.5 font-mono">
-                        {model.fileName || '未知檔案'} | 算法: {model.type} | 訓練日期: {model.date}
+                        📄 {model.fileName} ｜ 🕒 {model.date}
                       </p>
                     </div>
                   </div>
@@ -243,9 +239,14 @@ export default function ModelManagement({
                       <p className="text-[10px] text-white/40 uppercase font-bold tracking-widest mb-1">
                         訓練表現
                       </p>
-                      <p className="text-2xl font-black text-primary italic">
-                        {model.accuracy}
-                      </p>
+                      <div className="text-right text-sm font-mono space-y-1">
+                        <p>R²：{model.metrics?.r2?.toFixed(3) ?? '-'}</p>
+                        <p>RMSE：{model.metrics?.rmse?.toFixed(3) ?? '-'}</p>
+                        <p>MAE：{model.metrics?.mae?.toFixed(3) ?? '-'}</p>
+                        <p className="text-yellow-400 font-bold">
+                          WMAPE：{model.metrics?.wmape?.toFixed(4) ?? '-'}
+                        </p>
+                      </div>
                     </div>
 
                     <div className="flex gap-2 border-l border-white/10 pl-6">

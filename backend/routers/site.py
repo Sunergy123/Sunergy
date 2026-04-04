@@ -102,6 +102,15 @@ async def upload_site_data(
     site = db.query(Site).filter(Site.site_id == site_id).first()
     if not site:
         raise HTTPException(status_code=400, detail="site_id 不存在")
+    
+    # 2️⃣ 讀檔前
+    filename = file.filename.lower()
+
+    if not (filename.endswith(".csv") or filename.endswith(".xlsx")):
+        raise HTTPException(
+            status_code=400,
+            detail="檔案格式錯誤，請上傳.xlsx或.csv格式檔案"
+        )
 
     # 2️⃣ 讀檔
     content = await file.read()
@@ -147,16 +156,7 @@ async def upload_site_data(
     if missing:
         raise HTTPException(
             status_code=400,
-            detail={
-                "error": "欄位錯誤",
-                "missing_required_fields": missing,
-                "your_columns": original_columns,
-                "example_format": [
-                    "date, hour, gi, tm, eac",
-                    "2024-01-01, 0, 0, 15.2, 0",
-                    "2024-01-01, 00:00, 0, 15.2, 0",
-                ],
-            },
+            detail=f"檔案未含必要欄位（缺少: {', '.join(missing)}）"
         )
 
     # =========================

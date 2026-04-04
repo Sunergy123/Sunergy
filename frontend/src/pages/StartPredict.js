@@ -136,6 +136,13 @@ export default function StartPredict({
     const uploadedFile = event.target.files[0];
     if (!uploadedFile) return;
 
+    // ✅ 檔案格式檢查
+    const fileName = uploadedFile.name.toLowerCase();
+    if (!fileName.endsWith(".xlsx") && !fileName.endsWith(".csv")) {
+      setFileError("檔案格式錯誤，請上傳.xlsx或.csv格式檔案");
+      return;
+    }
+
     setFileError("");
     setSiteError("");
 
@@ -159,11 +166,12 @@ export default function StartPredict({
       console.log("upload response:", json);
 
       if (!res.ok) {
-        setFileError(
-          json?.detail?.error ||
-          json?.detail ||
-          "檔案格式或欄位錯誤，請確認資料內容"
-        );
+        // ✅ 如果後端有傳明確錯誤
+        if (json?.detail) {
+          setFileError(json.detail);
+        } else {
+          setFileError("檔案未含必要欄位（如 date、hour、GI、TM、EAC）");
+        }
         return;
       }
 

@@ -93,7 +93,9 @@ export default function ModelTraining({
   // Training progress state
   const [trainingProgress, setTrainingProgress] = useState(0);
   const [trainingStatus, setTrainingStatus] = useState('');
-
+  const [filePath, setFilePath] = useState('');
+  const [hasCleanedData, setHasCleanedData] = useState(false);
+  const [afterDataId, setAfterDataId] = useState(null);
 
   const toggleModel = (id) => setSelectedModels(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]);
 
@@ -110,6 +112,15 @@ export default function ModelTraining({
       .then(data => {
         if (data.file_name) {
           setCleanedFileName(data.file_name);
+          setHasCleanedData(true);
+          setAfterDataId(dataId);   // ✅ 有清洗才存
+        } else if (data.original_file_name) {
+          setCleanedFileName(data.original_file_name);
+          setHasCleanedData(false);
+          setAfterDataId(null);     // ❌ 沒清洗就清掉
+        } else {
+          setCleanedFileName("-");
+          setAfterDataId(null);
         }
       })
       .catch(err => console.error(err));
@@ -296,7 +307,30 @@ export default function ModelTraining({
           {/* Info: 目前處理檔案 */}
           <section className="bg-white/[0.02] p-5 rounded-2xl border border-white/5">
             <h2 className="text-sm font-bold text-primary mb-2">目前處理檔案</h2>
-            <p className="text-xs text-white/70 break-all">{cleanedFileName || "-"}</p>
+
+            <p className="text-xs text-white/70 break-all mb-3">
+              {cleanedFileName || "-"}
+            </p>
+
+            {hasCleanedData && cleanedFileName && cleanedFileName !== "-" && (
+              <button
+                onClick={() => {
+                  const dataId =
+                    localStorage.getItem('afterDataId') ||
+                    localStorage.getItem('lastDataId');
+
+                  if (!dataId) {
+                    alert("找不到資料ID");
+                    return;
+                  }
+
+                  window.open(`http://127.0.0.1:8000/train/download?data_id=${dataId}`);
+                }}
+                className="px-3 py-1 text-xs bg-primary text-black rounded hover:opacity-80"
+              >
+                下載資料
+              </button>
+            )}
           </section>
           {/* Step 2: 選擇模型 */}
           <section className="bg-white/[0.02] p-5 rounded-2xl border border-white/5">

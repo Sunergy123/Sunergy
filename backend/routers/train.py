@@ -1,6 +1,7 @@
 # routers/train.py
 # 訓練 + 模型管理端點
 from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import delete
 import pandas as pd
@@ -73,14 +74,6 @@ def train_info(data_id: int, db: Session = Depends(get_db)):
         }
 
     raise HTTPException(status_code=404, detail="找不到資料")
-    return {
-        "data_id": data_id,
-        "cleaned_file": entry.file_path,
-        "after_name": entry.after_name,
-        "before_rows": entry.before_rows,
-        "after_rows": entry.after_rows,
-    }
-
 
 @router.get("/models")
 def list_models(source_type: str, data_id: int):
@@ -731,3 +724,41 @@ def get_dashboard_stats(user_id: int, db: Session = Depends(get_db)):
         "carbon_factor": carbon_factor,
         "total_carbon_reduction": total_carbon_reduction
     }
+
+@router.get("/download")
+def download_file(data_id: int, db: Session = Depends(get_db)):
+    entry = db.query(AfterData).filter(AfterData.after_id == data_id).first()
+
+    # ❌ 沒清洗資料
+    if not entry:
+        raise HTTPException(
+            status_code=400,
+            detail="此資料尚未進行清洗，無法下載"
+        )
+
+    # ❌ 有清洗但沒檔案
+    if not entry.file_path:
+        raise HTTPException(
+            status_code=500,
+            detail="清洗資料缺少檔案路徑"
+        )
+
+    file_path = Path(entry.file_path)
+
+    # 相對路徑補 base_dir
+    if not file_path.is_absolute():
+        base_dir = Path(__file__).resolve().parent.parent
+        file_path = base_dir / file_path
+
+    # ❌ 檔案真的不存在
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"檔案不存在: {file_path}"
+        )
+
+    return FileResponse(
+        path=file_path,
+        filename=file_path.name,
+        media_type='application/octet-stream'
+    )

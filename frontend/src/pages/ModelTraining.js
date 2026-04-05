@@ -19,10 +19,10 @@ const StatusLight = ({ wmape }) => {
 
 
 const IntervalSlider = ({ label, min, max, start, end, onStartChange, onEndChange, step = 1 }) => {
-  const startPct = ((start - min) / (max - min)) * 100;
-  const endPct = ((end - min) / (max - min)) * 100;
-  const handleStartMove = (v) => onStartChange(Math.min(v, end));
-  const handleEndMove = (v) => onEndChange(Math.max(v, start));
+  const startPct = Math.max(0, Math.min(100, ((start - min) / (max - min)) * 100));
+  const endPct = Math.max(0, Math.min(100, ((end - min) / (max - min)) * 100));
+  const handleStartMove = (v) => onStartChange(Math.max(0, Math.min(v, end, max)));
+  const handleEndMove = (v) => onEndChange(Math.min(max, Math.max(v, start, 0)));
 
   return (
     <div className="mb-8">
@@ -38,11 +38,11 @@ const IntervalSlider = ({ label, min, max, start, end, onStartChange, onEndChang
       <div className="grid grid-cols-2 gap-4">
         <div>
           <p className="text-[9px] text-white/40 mb-1">起始設定</p>
-          <input type="number" step={step} value={start} onChange={(e) => onStartChange(Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs text-center focus:border-primary outline-none" />
+          <input type="number" step={step} min={0} max={max} value={start} onChange={(e) => onStartChange(Math.min(max, Math.max(0, Number(e.target.value))))} className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs text-center focus:border-primary outline-none" />
         </div>
         <div>
           <p className="text-[9px] text-white/40 mb-1">結束設定 (MAX: {max})</p>
-          <input type="number" step={step} value={end} onChange={(e) => onEndChange(Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs text-center focus:border-primary outline-none" />
+          <input type="number" step={step} min={0} max={max} value={end} onChange={(e) => onEndChange(Math.min(max, Math.max(0, Number(e.target.value))))} className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs text-center focus:border-primary outline-none" />
         </div>
       </div>
     </div>
@@ -63,22 +63,22 @@ export default function ModelTraining({
   const [selectedModels, setSelectedModels] = useState(['XGBoost']);
   const [paramIntervals, setParamIntervals] = useState({
     // XGBoost
-    XGB_trees_s: 100, XGB_trees_e: 500,
-    XGB_depth_s: 3, XGB_depth_e: 10,
-    XGB_lr_s: 0.01, XGB_lr_e: 0.3,
+    XGB_trees_s: 0, XGB_trees_e: 0,
+    XGB_depth_s: 0, XGB_depth_e: 0,
+    XGB_lr_s: 0, XGB_lr_e: 0,
     // XGBoost extra params (grid/manual)
-    XGB_subsample_s: 0.5, XGB_subsample_e: 1.0,
-    XGB_colsample_s: 0.5, XGB_colsample_e: 1.0,
-    XGB_min_child_s: 0, XGB_min_child_e: 6,
-    XGB_lambda_s: 0.0, XGB_lambda_e: 2.0,
-    XGB_alpha_s: 0.0, XGB_alpha_e: 1.0,
+    XGB_subsample_s: 0, XGB_subsample_e: 0,
+    XGB_colsample_s: 0, XGB_colsample_e: 0,
+    XGB_min_child_s: 0, XGB_min_child_e: 0,
+    XGB_lambda_s: 0, XGB_lambda_e: 0,
+    XGB_alpha_s: 0, XGB_alpha_e: 0,
     // SVR
-    SVR_c_s: 1, SVR_c_e: 50,
-    SVR_epsilon_s: 0.01, SVR_epsilon_e: 1.0,
+    SVR_c_s: 0, SVR_c_e: 0,
+    SVR_epsilon_s: 0, SVR_epsilon_e: 0,
     SVR_gamma: 'scale',
     // RandomForest
-    RF_trees_s: 50, RF_trees_e: 300,
-    RF_depth_s: 3, RF_depth_e: 12,
+    RF_trees_s: 0, RF_trees_e: 0,
+    RF_depth_s: 0, RF_depth_e: 0,
   });
   // Cap for XGB grid combinations
   const [xgbMaxComb, setXgbMaxComb] = useState(100);
@@ -90,8 +90,7 @@ export default function ModelTraining({
   const [device, setDevice] = useState('auto');  // 'auto' | 'cpu' | 'cuda'
   const [cleanedFileName, setCleanedFileName] = useState('');
   const [bayesTrials, setBayesTrials] = useState(30);
-  // Training progress state
-  const [trainingProgress, setTrainingProgress] = useState(0);
+  // Training status state
   const [trainingStatus, setTrainingStatus] = useState('');
   const [filePath, setFilePath] = useState('');
   const [hasCleanedData, setHasCleanedData] = useState(false);
@@ -167,22 +166,7 @@ export default function ModelTraining({
     }
 
     setIsTraining(true);
-    setTrainingProgress(0);
-    setTrainingStatus('準備訓練資料...');
-
-    // Simulate progress updates since backend doesn't support streaming
-    const progressInterval = setInterval(() => {
-      setTrainingProgress(prev => {
-        if (prev < 90) {
-          const increment = Math.random() * 10 + 2;
-          return Math.min(prev + increment, 90);
-        }
-        return prev;
-      });
-    }, 500);
-
-    // Update status based on strategy
-    setTimeout(() => setTrainingStatus(`執行 ${strategy === 'bayes' ? 'Bayesian 優化' : strategy === 'grid' ? '網格搜索' : '手動參數'} 訓練中...`), 1000);
+    setTrainingStatus(`正在執行 ${strategy === 'bayes' ? 'Bayesian 優化' : strategy === 'grid' ? '網格搜索' : '手動參數'} 訓練...`);
 
     try {
       const res = await fetch('http://127.0.0.1:8000/train/run', {
@@ -199,8 +183,6 @@ export default function ModelTraining({
         })
       });
 
-      clearInterval(progressInterval);
-      setTrainingProgress(95);
       setTrainingStatus('處理訓練結果...');
 
       const json = await res.json();
@@ -211,7 +193,6 @@ export default function ModelTraining({
       const results = json.results || {};
       console.log('Training results:', results); // Debug log
 
-      setTrainingProgress(100);
       setTrainingStatus('訓練完成！');
 
       if (Object.keys(results).length === 0) {
@@ -222,8 +203,6 @@ export default function ModelTraining({
       }
       if (json.cleaned_file) setCleanedFileName(json.cleaned_file);
     } catch (e) {
-      clearInterval(progressInterval);
-      setTrainingProgress(0);
       setTrainingStatus('');
       console.error('Training error:', e); // Debug log
       alert(e.message || '訓練失敗');
@@ -440,20 +419,11 @@ export default function ModelTraining({
 
           {/* Training Progress Bar */}
           {isTraining && (
-            <div className="mt-4 p-4 bg-white/[0.02] rounded-xl border border-white/5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-white/60">{trainingStatus}</span>
-                <span className="text-xs font-bold text-primary">{Math.round(trainingProgress)}%</span>
-              </div>
-              <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-primary to-green-400 rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${trainingProgress}%` }}
-                />
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                <span className="text-[10px] text-white/40">正在處理 {selectedModels.join(', ')} ...</span>
+            <div className="mt-4 p-6 bg-white/[0.02] rounded-xl border border-white/5 flex flex-col items-center gap-4">
+              <div className="size-12 border-4 border-white/10 border-t-primary rounded-full animate-spin" />
+              <div className="text-center">
+                <p className="text-sm text-white/70 font-medium">{trainingStatus}</p>
+                <p className="text-[10px] text-white/40 mt-1">正在處理 {selectedModels.join(', ')} ...</p>
               </div>
             </div>
           )}

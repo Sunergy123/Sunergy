@@ -35,8 +35,12 @@ export default function RegisterModal({ onClose, onSwitchToLogin }) {
         return;
       }
       
-      onClose();
-      onSwitchToLogin();
+      setMsg("註冊成功！請到信箱完成驗證");
+
+      setTimeout(() => {
+        onClose();
+        onSwitchToLogin();
+      }, 1500);
 
     } catch {
       setMsg("伺服器連線錯誤");

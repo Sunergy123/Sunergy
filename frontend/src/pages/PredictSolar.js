@@ -8,7 +8,7 @@ import { saveAs } from 'file-saver';
 const ErrorLight = ({ pct }) => {
   if (pct === null || pct === undefined) return <span className="text-white/20 text-sm">—</span>;
   const v = Number(pct);
-  if (v <= 5) return (
+  if (v <= 10) return (
     <span className="inline-flex items-center gap-1.5">
       <span className="size-3 rounded-full bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.5)]" />
       <span className="text-green-400 text-sm font-mono">{v.toFixed(1)}%</span>
@@ -34,7 +34,7 @@ const OverallStatus = ({ avgError, label }) => {
   const v = Number(avgError);
   let cfg = { color: 'text-green-400', bg: 'bg-green-500', shadow: 'shadow-[0_0_15px_rgba(34,197,94,0.4)]', label: '發電正常', desc: '預測與實際高度吻合' };
   if (v > 15) cfg = { color: 'text-red-400', bg: 'bg-red-500', shadow: 'shadow-[0_0_15px_rgba(239,68,68,0.4)]', label: '發電異常', desc: '偏差過大，請檢查設備' };
-  else if (v > 5) cfg = { color: 'text-yellow-400', bg: 'bg-yellow-500', shadow: 'shadow-[0_0_15px_rgba(234,179,8,0.4)]', label: '需留意', desc: '環境干擾或輕微積塵' };
+  else if (v > 10) cfg = { color: 'text-yellow-400', bg: 'bg-yellow-500', shadow: 'shadow-[0_0_15px_rgba(234,179,8,0.4)]', label: '需留意', desc: '環境干擾或輕微積塵' };
 
   return (
     <div className="flex items-center gap-3">
@@ -71,7 +71,7 @@ const getErrorColor = (pct) => {
   if (pct === null || pct === undefined) return null;
   const v = Number(pct);
   if (isNaN(v)) return null;
-  if (v <= 5) return { bg: 'C6EFCE', fg: '006100' };   // 綠
+  if (v <= 10) return { bg: 'C6EFCE', fg: '006100' };   // 綠
   if (v <= 15) return { bg: 'FFEB9C', fg: '9C6500' };  // 黃
   return { bg: 'FFC7CE', fg: '9C0006' };                // 紅
 };

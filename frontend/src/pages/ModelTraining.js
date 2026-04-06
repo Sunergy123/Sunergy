@@ -7,7 +7,7 @@ const StatusLight = ({ wmape }) => {
   const value = parseFloat(wmape);
   let status = { color: 'bg-green-500', label: '正常', shadow: 'shadow-[0_0_10px_rgba(34,197,94,0.8)]' };
   if (value > 0.15) status = { color: 'bg-red-500', label: '異常', shadow: 'shadow-[0_0_10px_rgba(239,68,68,0.8)]' };
-  else if (value > 0.05) status = { color: 'bg-yellow-500', label: '需留意', shadow: 'shadow-[0_0_10px_rgba(234,179,8,0.8)]' };
+  else if (value > 0.10) status = { color: 'bg-yellow-500', label: '需留意', shadow: 'shadow-[0_0_10px_rgba(234,179,8,0.8)]' };
 
   return (
     <div className="flex items-center gap-2">

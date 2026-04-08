@@ -51,7 +51,17 @@ export default function StartPredict({
   };
 
   useEffect(() => {
-    if (!restoredFromVisualization && !fromSite) {
+    const savedSite = localStorage.getItem("selectedSiteId");
+
+    // 👉 永遠優先用 localStorage
+    if (savedSite) {
+      setSelectedSite(savedSite);
+    } else {
+      setSelectedSite("");
+    }
+
+    // 👉 只有完全不是流程時才清
+    if (!restoredFromVisualization) {
       clearPredictCache();
 
       setFile(null);
@@ -59,17 +69,8 @@ export default function StartPredict({
       setFeatures([]);
       setOriginalFeatures([]);
       setRows(null);
-
-      setSelectedSite(""); // 只有「不是從案場來」才清
     }
-
-    if (fromSite) {
-      const savedSite = localStorage.getItem("selectedSiteId");
-      if (savedSite) {
-        setSelectedSite(savedSite);
-      }
-    }
-  }, [restoredFromVisualization, fromSite]);
+  }, []);
 
   /* ==================== 載入案場列表 ==================== */
   useEffect(() => {

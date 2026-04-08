@@ -185,6 +185,20 @@ export default function Sites({
 
                 {/* 操作 */}
                 <div className="flex items-center gap-3">
+                  {/* 👁 查看 / 訓練 */}
+                  <button
+                    onClick={() => {
+                      localStorage.setItem("selectedSiteId", String(site.site_id));
+                      localStorage.setItem("selectedSiteName", site.site_name);
+                      onSelectSite?.(site);
+                      onNavigateToTrain();
+                    }}
+                    className="material-symbols-outlined text-white/60 hover:text-primary transition"
+                  >
+                    visibility
+                  </button>
+
+                  {/* ✏️ 編輯 */}
                   <button
                     onClick={() => onOpenEditSite?.(site)}
                     className="material-symbols-outlined text-white/60 hover:text-primary transition"
@@ -192,6 +206,7 @@ export default function Sites({
                     edit
                   </button>
 
+                  {/* ⬇️ 展開 */}
                   <button
                     onClick={() => toggleExpand(site.site_id)}
                     className={`material-symbols-outlined transition ${
@@ -385,18 +400,11 @@ export default function Sites({
         </div>
       )}
       {/* 3. Footer */}
-      <footer className="mt-24 flex w-full justify-center border-t border-solid border-white/10">
-        <div className="flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-4 py-6 sm:flex-row sm:px-10">
-          <p className="text-white/50 text-sm">© 2024 日光預. All rights reserved.</p>
-          <div className="flex items-center gap-6">
-            <a className="text-white/50 hover:text-white/80 text-sm font-normal leading-normal transition-colors" href="#">服務條款</a>
-            <a className="text-white/50 hover:text-white/80 text-sm font-normal leading-normal transition-colors" href="#">隱私權政策</a>
-          </div>
-        </div>
+      <footer className="p-8 text-center text-white/10 text-[10px] font-bold uppercase tracking-[0.4em]">
+        © 2025 SUNERGY ANALYTICS CENTER
       </footer>
       {/* Sticky Footer */}
       {selectedSiteIds.length > 0 && (
-        <div className="sticky bottom-0 w-full border-t border-white/10 bg-[#1E1E1E] p-4 px-6 z-40 shadow-2xl">
           <div className="mx-auto flex max-w-7xl items-center justify-between">
             <div className="text-sm">
               已選取
@@ -406,35 +414,43 @@ export default function Sites({
               個案場
             </div>
 
-            {selectedSiteIds.length > 1 ? (
-              <button
-                onClick={handleBatchDelete}
-                className="flex items-center gap-2 rounded-lg border border-red-500/50 text-red-400 px-6 py-2 text-sm font-bold hover:bg-red-500/10"
-              >
-                <span className="material-symbols-outlined !text-lg">
-                  delete
-                </span>
-                批次刪除
-              </button>
-            ) : (
-              <button
-                  onClick={() => {
-                    const selected = sites.find(s => s.site_id === selectedSiteIds[0]);
+            {selectedSiteIds.length >= 1 && (
+              <div className="fixed bottom-0 left-0 w-full z-50">
+                <div className="w-full bg-background-dark/95 backdrop-blur border-t border-white/10 px-8 py-4 flex items-center justify-between">
 
-                    if (!selected) return;
+                  {/* 左側 */}
+                  <div className="flex items-center gap-6">
+                    <p className="text-white">
+                      已選擇 <span className="text-primary font-bold">{selectedSiteIds.length}</span> 個案場
+                    </p>
 
-                    localStorage.setItem("selectedSiteId", selected.site_id);
+                    <button
+                      onClick={() => setSelectedSiteIds(sites.map(s => s.site_id))}
+                      className="text-sm text-white/60 hover:text-white underline"
+                    >
+                      全選
+                    </button>
 
-                    onSelectSite(selected);
-                  }}
-                  className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-bold text-background-dark hover:scale-105"
-                >
-                  <span className="material-symbols-outlined !text-lg">model_training</span>
-                  開始訓練模型
-                </button>
+                    <button
+                      onClick={() => setSelectedSiteIds([])}
+                      className="text-sm text-white/60 hover:text-white underline"
+                    >
+                      取消選取
+                    </button>
+                  </div>
+
+                  {/* 右側 */}
+                  <button
+                    onClick={() => setConfirmBatchDelete(true)}
+                    className="px-6 py-2 bg-red-500 rounded-lg text-sm font-bold hover:bg-red-600"
+                  >
+                    刪除選取項目
+                  </button>
+
+                </div>
+              </div>
             )}
           </div>
-        </div>
       )}
     </div>
   );

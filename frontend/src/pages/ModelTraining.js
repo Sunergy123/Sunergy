@@ -109,18 +109,18 @@ export default function ModelTraining({
     fetch(`http://127.0.0.1:8000/train/info?data_id=${dataId}`)
       .then(res => res.json())
       .then(data => {
-        if (data.file_name) {
-          setCleanedFileName(data.file_name);
-          setHasCleanedData(true);
-          setAfterDataId(dataId);   // ✅ 有清洗才存
-        } else if (data.original_file_name) {
-          setCleanedFileName(data.original_file_name);
-          setHasCleanedData(false);
-          setAfterDataId(null);     // ❌ 沒清洗就清掉
-        } else {
-          setCleanedFileName("-");
-          setAfterDataId(null);
-        }
+        console.log("train info:", data); // 建議加這行 debug
+
+        // 判斷是否為 cleaned
+        setHasCleanedData(data.type === "cleaned");
+        setAfterDataId(data.type === "cleaned" ? dataId : null);
+
+        // ⭐ 檔名統一處理（關鍵）
+        setCleanedFileName(
+          data.file_name ||
+          data.original_file_name ||
+          "-"
+        );
       })
       .catch(err => console.error(err));
   }, []);

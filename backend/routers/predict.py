@@ -85,6 +85,15 @@ def predict(payload: PredictRequest, db: Session = Depends(get_db)):
         model = _joblib.load(artifact_path)
         y_pred = model.predict(X)
 
+    if payload.model_id:
+        tm = db.query(TrainedModel).filter(
+            TrainedModel.model_id == payload.model_id
+        ).first()
+
+        if tm:
+            tm.usage_count = (tm.usage_count or 0) + 1
+            db.commit()
+
     return _to_native({
         "artifact": artifact_path.name,
         "n": int(len(y_pred)),
@@ -223,6 +232,9 @@ async def predict_file(
     for r in rows_out:
         for h in _hide:
             r.pop(h, None)
+
+    tm.usage_count = (tm.usage_count or 0) + 1
+    db.commit()
 
     return _to_native({
         "model_type": tm.model_type,

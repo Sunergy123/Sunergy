@@ -139,8 +139,7 @@ export default function Dashboard({
     }
   };
 
-  useEffect(() => {
-    const fetchModels = async () => {
+  const fetchModels = async () => {
       try {
         setLoadingModels(true);
         setModelError('');
@@ -212,8 +211,10 @@ export default function Dashboard({
       }
     };
 
+  useEffect(() => {
     fetchModels();
-    }, []);
+  }, []);
+  
   // 在原本的 fetchModels(); 下方新增以下區塊
   useEffect(() => {
   const fetchDashboardStats = async () => {
@@ -247,7 +248,10 @@ export default function Dashboard({
     <div className="flex min-h-screen w-full flex-col bg-background-dark text-white font-sans">
       <Navbar
         activePage="dashboard"
-        onNavigateToDashboard={onNavigateToDashboard}
+        onNavigateToDashboard={() => {
+          fetchModels();   // ⭐ 關鍵
+          onNavigateToDashboard();
+        }}
         onNavigateToTrain={onNavigateToTrain}
         onNavigateToSites={onNavigateToSites}
         onNavigateToPredict={onNavigateToPredict}

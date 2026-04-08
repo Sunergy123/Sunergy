@@ -179,6 +179,8 @@ def list_trained_models(
             "r2": model.r2,
             "mae": model.mae,
             "wmape": model.wmape,
+
+            "usage_count": model.usage_count or 0,
         })
 
     return out

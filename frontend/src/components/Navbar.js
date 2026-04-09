@@ -79,7 +79,7 @@ export default function Navbar({
             </button>
             
             {/* 4. 案場管理 */}
-            <button onClick={onNavigateToSites} className={getLinkClass('site')}>
+            <button onClick={onNavigateToSites} className={getLinkClass('sites')}>
               案場管理
             </button>
 

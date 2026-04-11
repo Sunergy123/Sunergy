@@ -10,15 +10,19 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 import secrets
 import models, schemas, database
+import os
+from dotenv import load_dotenv
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 
+load_dotenv()
+
 # --- SMTP 設定 ---
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
-SMTP_USER = "sunergylab123@gmail.com" 
-SMTP_PASS = "jejlxoedhlacqbhq"  
+SMTP_USER = os.getenv("SMTP_USER") 
+SMTP_PASS = os.getenv("SMTP_PASS")
 
 # 專門寄送 HTML 驗證連結的函式
 def send_html_email(to_email: str, subject: str, html_content: str):

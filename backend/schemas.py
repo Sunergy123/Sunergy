@@ -1,6 +1,11 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict, Any, List
 
+class UserCreate(BaseModel):
+    user_name: str
+    user_account: str
+    user_pw: str
+    
 
 class RegisterUser(BaseModel):
     user_name: str
@@ -72,3 +77,9 @@ class PredictRequest(BaseModel):
     model_id: Optional[str] = None
     trained_at: Optional[str] = None
     rows: Optional[List[Dict[str, Any]]] = None
+
+    
+class ChangePasswordRequest(BaseModel):
+    user_id: int
+    old_pw: str
+    new_pw: str

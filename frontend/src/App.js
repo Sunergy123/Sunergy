@@ -21,6 +21,7 @@ import UserGuide from './pages/UserGuide';
 // ===== Modals =====
 import CreateSiteModal from './components/CreateSiteModal';
 import EditSiteModal from './components/EditSiteModal'; // 帶入後端版的編輯功能
+import ChangePasswordModal from './components/ChangePasswordModal';
 
 function App() {
   // ==============================
@@ -32,6 +33,7 @@ function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [isCreateSiteModalOpen, setIsCreateSiteModalOpen] = useState(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
   const [editingSite, setEditingSite] = useState(null); // 案場編輯狀態
   const [selectedSite, setSelectedSite] = useState(null);
   const [fromSite, setFromSite] = useState(false);
@@ -155,15 +157,18 @@ function App() {
       user: currentUser,
       onNavigateToDashboard: () => navigate('dashboard'),
       onNavigateToTrain: () => {
-        setFromSite(false);   // ⭐ 這行
+        setFromSite(false);   
         navigate('data-guide');
       },
       onNavigateToPredict: () => {
-        setPredictFrom(null);   // ⭐ 重置來源
+        setPredictFrom(null);   
         navigate('predict-solar');
       },
       onNavigateToSites: () => navigate('site'),
       onNavigateToModelMgmt: () => navigate('model-mgmt'),
+
+      onNavigateToChangePassword: () => setIsChangePasswordModalOpen(true),
+
       onLogout: handleLogout
     };
 
@@ -230,6 +235,10 @@ function App() {
       )}
       {isLoggedIn && editingSite && (
         <EditSiteModal site={editingSite} onClose={() => setEditingSite(null)} />
+      )}
+
+      {isLoggedIn && isChangePasswordModalOpen && (
+        <ChangePasswordModal onClose={() => setIsChangePasswordModalOpen(false)} />
       )}
     </>
   );

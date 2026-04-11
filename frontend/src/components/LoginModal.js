@@ -122,7 +122,7 @@ export default function LoginModal({
               <button
                 type="button"
                 onClick={() => setShowForgotModal(true)}
-                className="text-white/60 text-sm mt-2"
+                className="text-sm font-medium text-red-500 transition-colors hover:text-red-400 hover:underline"
               >
                 忘記密碼？
               </button>

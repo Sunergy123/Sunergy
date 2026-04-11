@@ -1,9 +1,10 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float, Date, CheckConstraint
+from sqlalchemy import Column, Integer, String, DateTime,  Boolean, ForeignKey, Float, Date, CheckConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import Boolean
+
 
 
 # ======================
@@ -139,3 +140,5 @@ class TrainedModel(Base):
             name="check_data_source"
         ),
     )
+
+#=========

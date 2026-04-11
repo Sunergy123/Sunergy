@@ -10,27 +10,22 @@ export default function ForgotPasswordModal({ onClose }) {
 
   const sendCode = async () => {
     setMsg("");
+    if (!email) return setMsg("請輸入電子信箱");
     setLoading(true);
 
     try {
       const res = await fetch("http://127.0.0.1:8000/auth/forgot-password/send-code", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          user_account: email,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_account: email }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
         setMsg(data.detail || "寄送失敗");
         return;
       }
-
-      setMsg(data.message || "驗證碼已寄出");
+      setMsg(""); // 清空錯誤
+      alert(data.message || "驗證碼已寄出！");
       setStep(2);
     } catch {
       setMsg("伺服器連線錯誤");
@@ -41,28 +36,21 @@ export default function ForgotPasswordModal({ onClose }) {
 
   const verifyCode = async () => {
     setMsg("");
+    if (!code) return setMsg("請輸入驗證碼");
     setLoading(true);
 
     try {
       const res = await fetch("http://127.0.0.1:8000/auth/forgot-password/verify-code", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          user_account: email,
-          code: code,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_account: email, code: code }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
         setMsg(data.detail || "驗證失敗");
         return;
       }
-
-      setMsg(data.message || "驗證成功");
+      setMsg("");
       setStep(3);
     } catch {
       setMsg("伺服器連線錯誤");
@@ -73,32 +61,23 @@ export default function ForgotPasswordModal({ onClose }) {
 
   const resetPassword = async () => {
     setMsg("");
+    if (!newPassword) return setMsg("請輸入新密碼");
     setLoading(true);
 
     try {
       const res = await fetch("http://127.0.0.1:8000/auth/forgot-password/reset", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          user_account: email,
-          new_password: newPassword,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_account: email, new_password: newPassword }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
         setMsg(data.detail || "重設失敗");
         return;
       }
-
-      setMsg(data.message || "密碼重設成功");
-
-      setTimeout(() => {
-        onClose?.();
-      }, 1200);
+      
+      alert("密碼重設成功！請使用新密碼登入。");
+      onClose?.();
     } catch {
       setMsg("伺服器連線錯誤");
     } finally {
@@ -107,94 +86,82 @@ export default function ForgotPasswordModal({ onClose }) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="relative w-full max-w-md rounded-2xl bg-background-dark p-8 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-4 right-4 text-white/70"
-        >
-          ✕
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="relative w-full max-w-[420px] overflow-hidden rounded-2xl border border-white/10 bg-[#1E1E1E] p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <button type="button" onClick={onClose} className="absolute right-4 top-4 text-white/40 hover:text-white">
+          <span className="material-symbols-outlined">close</span>
         </button>
 
-        <h2 className="text-2xl font-bold text-white mb-4">忘記密碼</h2>
-
-        {msg && <p className="text-red-400 mb-3">{msg}</p>}
-
-        {step === 1 && (
-          <div className="flex flex-col gap-4">
-            <div>
-              <label className="text-white/80 text-sm">電子信箱</label>
-              <input
-                type="email"
-                className="w-full rounded-lg bg-white/10 px-4 py-3 text-white"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="請輸入註冊信箱"
-              />
-            </div>
-
-            <button
-              onClick={sendCode}
-              disabled={loading}
-              className="w-full rounded-lg bg-primary py-3 text-background-dark font-bold"
-            >
-              寄出驗證碼
-            </button>
+        <div className="mb-6 text-center">
+          <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <span className="material-symbols-outlined !text-3xl">lock_reset</span>
           </div>
-        )}
+          <h2 className="text-2xl font-bold text-white">忘記密碼</h2>
+          <p className="mt-1 text-sm text-white/50">
+            {step === 1 && "請輸入您的註冊信箱以獲取驗證碼"}
+            {step === 2 && "請輸入您信箱收到的 6 位數驗證碼"}
+            {step === 3 && "請設定您的新密碼"}
+          </p>
+        </div>
 
-        {step === 2 && (
-          <div className="flex flex-col gap-4">
-            <div>
-              <label className="text-white/80 text-sm">驗證碼</label>
-              <input
-                type="text"
-                className="w-full rounded-lg bg-white/10 px-4 py-3 text-white"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="請輸入信箱中的 6 碼驗證碼"
-              />
-            </div>
+        {msg && <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-center text-sm font-medium text-red-400 border border-red-500/20">{msg}</div>}
 
-            <button
-              onClick={verifyCode}
-              disabled={loading}
-              className="w-full rounded-lg bg-primary py-3 text-background-dark font-bold"
-            >
-              驗證
-            </button>
-          </div>
-        )}
+        <div className="space-y-4">
+          {step === 1 && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-white/70">電子信箱</label>
+                <input
+                  type="email"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/20 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="example@gmail.com"
+                />
+              </div>
+              <button onClick={sendCode} disabled={loading} className="w-full rounded-xl bg-primary py-3.5 text-sm font-bold text-black shadow-lg shadow-primary/20 transition-all hover:translate-y-[-1px] hover:bg-primary/90 disabled:opacity-50">
+                {loading ? "寄送中..." : "寄出驗證碼"}
+              </button>
+            </>
+          )}
 
-        {step === 3 && (
-          <div className="flex flex-col gap-4">
-            <div>
-              <label className="text-white/80 text-sm">新密碼</label>
-              <input
-                type="password"
-                className="w-full rounded-lg bg-white/10 px-4 py-3 text-white"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="請輸入新密碼"
-              />
-            </div>
+          {step === 2 && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-white/70">驗證碼</label>
+                <input
+                  type="text"
+                  maxLength="6"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/20 text-center tracking-widest focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="------"
+                />
+              </div>
+              <button onClick={verifyCode} disabled={loading} className="w-full rounded-xl bg-primary py-3.5 text-sm font-bold text-black shadow-lg shadow-primary/20 transition-all hover:translate-y-[-1px] hover:bg-primary/90 disabled:opacity-50">
+                {loading ? "驗證中..." : "確認驗證碼"}
+              </button>
+            </>
+          )}
 
-            <button
-              onClick={resetPassword}
-              disabled={loading}
-              className="w-full rounded-lg bg-primary py-3 text-background-dark font-bold"
-            >
-              重設密碼
-            </button>
-          </div>
-        )}
+          {step === 3 && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-white/70">新密碼</label>
+                <input
+                  type="password"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/20 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="請輸入新密碼"
+                />
+              </div>
+              <button onClick={resetPassword} disabled={loading} className="w-full rounded-xl bg-primary py-3.5 text-sm font-bold text-black shadow-lg shadow-primary/20 transition-all hover:translate-y-[-1px] hover:bg-primary/90 disabled:opacity-50">
+                {loading ? "處理中..." : "重設密碼"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

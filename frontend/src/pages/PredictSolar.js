@@ -8,7 +8,7 @@ import { saveAs } from 'file-saver';
 const ErrorLight = ({ pct }) => {
   if (pct === null || pct === undefined) return <span className="text-white/20 text-sm">—</span>;
   const v = Number(pct);
-  if (v <= 10) return (
+  if (v <= 5) return (
     <span className="inline-flex items-center gap-1.5">
       <span className="size-3 rounded-full bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.5)]" />
       <span className="text-green-400 text-sm font-mono">{v.toFixed(1)}%</span>
@@ -34,7 +34,7 @@ const OverallStatus = ({ avgError, label }) => {
   const v = Number(avgError);
   let cfg = { color: 'text-green-400', bg: 'bg-green-500', shadow: 'shadow-[0_0_15px_rgba(34,197,94,0.4)]', label: '發電正常', desc: '預測與實際高度吻合' };
   if (v > 15) cfg = { color: 'text-red-400', bg: 'bg-red-500', shadow: 'shadow-[0_0_15px_rgba(239,68,68,0.4)]', label: '發電異常', desc: '偏差過大，請檢查設備' };
-  else if (v > 10) cfg = { color: 'text-yellow-400', bg: 'bg-yellow-500', shadow: 'shadow-[0_0_15px_rgba(234,179,8,0.4)]', label: '需留意', desc: '環境干擾或輕微積塵' };
+  else if (v > 5) cfg = { color: 'text-yellow-400', bg: 'bg-yellow-500', shadow: 'shadow-[0_0_15px_rgba(234,179,8,0.4)]', label: '需留意', desc: '環境干擾或輕微積塵' };
 
   return (
     <div className="flex items-center gap-3">
@@ -71,21 +71,21 @@ const getErrorColor = (pct) => {
   if (pct === null || pct === undefined) return null;
   const v = Number(pct);
   if (isNaN(v)) return null;
-  if (v <= 10) return { bg: 'C6EFCE', fg: '006100' };   // 綠
+  if (v <= 5) return { bg: 'C6EFCE', fg: '006100' };   // 綠
   if (v <= 15) return { bg: 'FFEB9C', fg: '9C6500' };  // 黃
   return { bg: 'FFC7CE', fg: '9C0006' };                // 紅
 };
 
-export default function PredictSolar({ 
+export default function PredictSolar({
   activePage,
   onBack,
-  onNavigateToDashboard, 
-  onLogout, 
-  onNavigateToSites, 
-  onNavigateToTrain, 
-  onNavigateToPredict, 
-  onNavigateToModelMgmt 
-}){
+  onNavigateToDashboard,
+  onLogout,
+  onNavigateToSites,
+  onNavigateToTrain,
+  onNavigateToPredict,
+  onNavigateToModelMgmt
+}) {
   const [file, setFile] = useState(null);
   const [selectedModelIds, setSelectedModelIds] = useState([]);
 
@@ -98,6 +98,8 @@ export default function PredictSolar({
   }, []);
 
   const [trainedModels, setTrainedModels] = useState([]);
+  const [modelSearch, setModelSearch] = useState('');
+  const [modelTypeFilter, setModelTypeFilter] = useState('all');
   const [isPredicting, setIsPredicting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
@@ -495,41 +497,84 @@ export default function PredictSolar({
                   2. 選擇訓練模型
                   <span className="ml-2 text-primary/60 normal-case">（可多選比對）</span>
                 </label>
+
+                {/* 搜尋框 */}
+                <div className="relative mb-2">
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 !text-base text-white/20">search</span>
+                  <input
+                    type="text"
+                    placeholder="搜尋案場名稱..."
+                    value={modelSearch}
+                    onChange={(e) => setModelSearch(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-xs text-white/70 placeholder:text-white/20 focus:border-primary/50 focus:outline-none"
+                  />
+                </div>
+
+                {/* 算法篩選 */}
+                <div className="flex gap-1.5 mb-3 flex-wrap">
+                  {['all', ...Array.from(new Set(trainedModels.map(m => m.model_type)))].map(type => (
+                    <button
+                      key={type}
+                      onClick={() => setModelTypeFilter(type)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border ${modelTypeFilter === type
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-white/10 bg-white/5 text-white/40 hover:text-white/60'
+                        }`}
+                    >
+                      {type === 'all' ? '全部' : type}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="max-h-[280px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
                   {trainedModels.length === 0 && (
                     <p className="text-sm text-white/20 italic py-4 text-center">尚無可用模型</p>
                   )}
-                  {trainedModels.map(m => {
-                    const isSelected = selectedModelIds.includes(String(m.model_id));
-                    return (
-                      <label
-                        key={m.model_id}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all border ${isSelected
+                  {trainedModels
+                    .filter(m => modelTypeFilter === 'all' || m.model_type === modelTypeFilter)
+                    .filter(m => {
+                      if (!modelSearch.trim()) return true;
+                      const q = modelSearch.toLowerCase();
+                      return (m.site_name || '').toLowerCase().includes(q)
+                        || (m.model_type || '').toLowerCase().includes(q)
+                        || String(m.model_id).includes(q);
+                    })
+                    .map(m => {
+                      const isSelected = selectedModelIds.includes(String(m.model_id));
+                      return (
+                        <label
+                          key={m.model_id}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all border ${isSelected
                             ? 'bg-primary/10 border-primary/30 shadow-[0_0_12px_rgba(242,204,13,0.08)]'
                             : 'border-white/5 hover:bg-white/[0.03] hover:border-white/10'
-                          }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleModel(m.model_id)}
-                          className="accent-primary size-4 rounded"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-xs font-black px-2 py-0.5 rounded ${isSelected ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/50'
-                              }`}>
-                              {m.model_type}
-                            </span>
-                            <span className="text-xs text-white/30 font-mono">#{m.model_id}</span>
+                            }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleModel(m.model_id)}
+                            className="accent-primary size-4 rounded"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-black px-2 py-0.5 rounded ${isSelected ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/50'
+                                }`}>
+                                {m.model_type}
+                              </span>
+                              <span className="text-xs text-white/30 font-mono">#{m.model_id}</span>
+                              {m.site_name && (
+                                <span className="text-[10px] text-cyan-400/70 bg-cyan-400/10 px-1.5 py-0.5 rounded truncate max-w-[100px]" title={m.site_name}>
+                                  {m.site_name}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-white/20 mt-0.5 truncate">
+                              {m.trained_at ? m.trained_at.slice(0, 16).replace('T', ' ') : ''}
+                            </p>
                           </div>
-                          <p className="text-[11px] text-white/20 mt-0.5 truncate">
-                            {m.site_name} · {m.trained_at ? m.trained_at.slice(0, 16).replace('T', ' ') : ''}
-                          </p>
-                        </div>
-                      </label>
-                    );
-                  })}
+                        </label>
+                      );
+                    })}
                 </div>
                 {selectedModelIds.length > 0 && (
                   <p className="text-sm text-primary/60 mt-2 font-bold">
@@ -635,8 +680,8 @@ export default function PredictSolar({
                     <button
                       onClick={() => setShowFilters(f => !f)}
                       className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold border transition-all ${showFilters
-                          ? 'bg-primary/10 border-primary/30 text-primary'
-                          : 'border-white/10 text-white/40 hover:bg-white/5 hover:text-white/60'
+                        ? 'bg-primary/10 border-primary/30 text-primary'
+                        : 'border-white/10 text-white/40 hover:bg-white/5 hover:text-white/60'
                         }`}
                     >
                       <span className="material-symbols-outlined !text-base">filter_alt</span>

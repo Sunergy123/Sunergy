@@ -7,7 +7,7 @@ const StatusLight = ({ wmape }) => {
   const value = parseFloat(wmape);
   let status = { color: 'bg-green-500', label: '正常', shadow: 'shadow-[0_0_10px_rgba(34,197,94,0.8)]' };
   if (value > 0.15) status = { color: 'bg-red-500', label: '異常', shadow: 'shadow-[0_0_10px_rgba(239,68,68,0.8)]' };
-  else if (value > 0.10) status = { color: 'bg-yellow-500', label: '需留意', shadow: 'shadow-[0_0_10px_rgba(234,179,8,0.8)]' };
+  else if (value > 0.05) status = { color: 'bg-yellow-500', label: '需留意', shadow: 'shadow-[0_0_10px_rgba(234,179,8,0.8)]' };
 
   return (
     <div className="flex items-center gap-2">
@@ -21,8 +21,8 @@ const StatusLight = ({ wmape }) => {
 const IntervalSlider = ({ label, min, max, start, end, onStartChange, onEndChange, step = 1 }) => {
   const startPct = Math.max(0, Math.min(100, ((start - min) / (max - min)) * 100));
   const endPct = Math.max(0, Math.min(100, ((end - min) / (max - min)) * 100));
-  const handleStartMove = (v) => onStartChange(Math.max(0, Math.min(v, end, max)));
-  const handleEndMove = (v) => onEndChange(Math.min(max, Math.max(v, start, 0)));
+  const handleStartMove = (v) => onStartChange(Math.max(min, Math.min(v, end, max)));
+  const handleEndMove = (v) => onEndChange(Math.min(max, Math.max(v, start, min)));
 
   return (
     <div className="mb-8">
@@ -37,12 +37,12 @@ const IntervalSlider = ({ label, min, max, start, end, onStartChange, onEndChang
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <p className="text-[9px] text-white/40 mb-1">起始設定</p>
-          <input type="number" step={step} min={0} max={max} value={start} onChange={(e) => onStartChange(Math.min(max, Math.max(0, Number(e.target.value))))} className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs text-center focus:border-primary outline-none" />
+          <p className="text-[9px] text-white/40 mb-1">起始設定 (MIN: {min})</p>
+          <input type="number" step={step} min={min} max={max} value={start} onChange={(e) => onStartChange(Math.min(max, Math.max(min, Number(e.target.value))))} className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs text-center focus:border-primary outline-none" />
         </div>
         <div>
           <p className="text-[9px] text-white/40 mb-1">結束設定 (MAX: {max})</p>
-          <input type="number" step={step} min={0} max={max} value={end} onChange={(e) => onEndChange(Math.min(max, Math.max(0, Number(e.target.value))))} className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs text-center focus:border-primary outline-none" />
+          <input type="number" step={step} min={min} max={max} value={end} onChange={(e) => onEndChange(Math.min(max, Math.max(min, Number(e.target.value))))} className="w-full bg-white/5 border border-white/10 rounded p-2 text-xs text-center focus:border-primary outline-none" />
         </div>
       </div>
     </div>
@@ -59,27 +59,27 @@ export default function ModelTraining({
   onNavigateToSites,
   onNavigateToChangePassword,
   activePage
-}){
+}) {
   const [splitRatio, setSplitRatio] = useState(80);
   const [selectedModels, setSelectedModels] = useState(['XGBoost']);
   const [paramIntervals, setParamIntervals] = useState({
     // XGBoost
-    XGB_trees_s: 0, XGB_trees_e: 0,
-    XGB_depth_s: 0, XGB_depth_e: 0,
-    XGB_lr_s: 0, XGB_lr_e: 0,
+    XGB_trees_s: 100, XGB_trees_e: 500,
+    XGB_depth_s: 3, XGB_depth_e: 8,
+    XGB_lr_s: 0.01, XGB_lr_e: 0.2,
     // XGBoost extra params (grid/manual)
-    XGB_subsample_s: 0, XGB_subsample_e: 0,
-    XGB_colsample_s: 0, XGB_colsample_e: 0,
-    XGB_min_child_s: 0, XGB_min_child_e: 0,
-    XGB_lambda_s: 0, XGB_lambda_e: 0,
-    XGB_alpha_s: 0, XGB_alpha_e: 0,
+    XGB_subsample_s: 0.7, XGB_subsample_e: 1.0,
+    XGB_colsample_s: 0.7, XGB_colsample_e: 1.0,
+    XGB_min_child_s: 1, XGB_min_child_e: 5,
+    XGB_lambda_s: 0.5, XGB_lambda_e: 2,
+    XGB_alpha_s: 0, XGB_alpha_e: 1,
     // SVR
-    SVR_c_s: 0, SVR_c_e: 0,
-    SVR_epsilon_s: 0, SVR_epsilon_e: 0,
+    SVR_c_s: 1, SVR_c_e: 50,
+    SVR_epsilon_s: 0.01, SVR_epsilon_e: 0.5,
     SVR_gamma: 'scale',
     // RandomForest
-    RF_trees_s: 0, RF_trees_e: 0,
-    RF_depth_s: 0, RF_depth_e: 0,
+    RF_trees_s: 100, RF_trees_e: 300,
+    RF_depth_s: 5, RF_depth_e: 15,
   });
   // Cap for XGB grid combinations
   const [xgbMaxComb, setXgbMaxComb] = useState(100);
@@ -132,6 +132,25 @@ export default function ModelTraining({
       localStorage.getItem('afterDataId') ||
       localStorage.getItem('lastDataId');
     if (!dataId) return alert('找不到清洗後的資料來源');
+
+    // 參數防呆驗證：不能為 0 的參數
+    const errors = [];
+    if (selectedModels.includes('XGBoost')) {
+      if (paramIntervals.XGB_trees_s <= 0 || paramIntervals.XGB_trees_e <= 0) errors.push('XGBoost n_estimators 不可為 0');
+      if (paramIntervals.XGB_depth_s <= 0 || paramIntervals.XGB_depth_e <= 0) errors.push('XGBoost max_depth 不可為 0');
+      if (paramIntervals.XGB_lr_s <= 0 || paramIntervals.XGB_lr_e <= 0) errors.push('XGBoost learning_rate 不可為 0');
+      if (paramIntervals.XGB_subsample_s <= 0 || paramIntervals.XGB_subsample_e <= 0) errors.push('XGBoost subsample 不可為 0');
+      if (paramIntervals.XGB_colsample_s <= 0 || paramIntervals.XGB_colsample_e <= 0) errors.push('XGBoost colsample_bytree 不可為 0');
+    }
+    if (selectedModels.includes('SVR')) {
+      if (paramIntervals.SVR_c_s <= 0 || paramIntervals.SVR_c_e <= 0) errors.push('SVR C (懲罰參數) 不可為 0');
+      if (paramIntervals.SVR_epsilon_s <= 0 || paramIntervals.SVR_epsilon_e <= 0) errors.push('SVR epsilon (容忍度) 不可為 0');
+    }
+    if (selectedModels.includes('RandomForest')) {
+      if (paramIntervals.RF_trees_s <= 0 || paramIntervals.RF_trees_e <= 0) errors.push('RandomForest n_estimators 不可為 0');
+      if (paramIntervals.RF_depth_s <= 0 || paramIntervals.RF_depth_e <= 0) errors.push('RandomForest max_depth 不可為 0');
+    }
+    if (errors.length > 0) return alert('參數設定錯誤：\n' + errors.join('\n'));
 
     const params = {};
     if (selectedModels.includes('XGBoost')) params['XGBoost'] = {
@@ -212,38 +231,38 @@ export default function ModelTraining({
     }
   };
   const metricExplanations = [
-  {
-    id: 'R² Score',
-    name: '決定係數',
-    desc: '衡量模型解釋資料變異的能力。越接近 1 代表模型擬合度越高，預測越準確。',
-    formula: '1 - (SS_res / SS_tot)',
-    color: 'text-green-400'
-  },
-  {
-    id: 'RMSE',
-    name: '均方根誤差',
-    desc: '衡量預測值與真實值間的平均差距。單位與發電量一致 (kW)，數值越小代表誤差越低。',
-    formula: 'sqrt(mean((y_true - y_pred)²))',
-    color: 'text-blue-400'
-  },
-  {
-    id: 'MAE',
-    name: '平均絕對殘差',
-    desc: '預測值與真實值差距的絕對值平均。較不受極端值影響，能直觀反映平均誤差大小。',
-    formula: 'mean(abs(y_true - y_pred))',
-    color: 'text-purple-400'
-  },
-  {
-    id: 'WMAPE',
-    name: '加權平均絕對百分比誤差',
-    desc: '將總絕對誤差除以總實際發電量。相對於 MAPE，它解決了實際值為 0 時的計算問題。',
-    formula: 'sum(abs(error)) / sum(abs(actual))',
-    color: 'text-yellow-500'
-  }
-];
+    {
+      id: 'R² Score',
+      name: '決定係數',
+      desc: '衡量模型解釋資料變異的能力。越接近 1 代表模型擬合度越高，預測越準確。',
+      formula: '1 - (SS_res / SS_tot)',
+      color: 'text-green-400'
+    },
+    {
+      id: 'RMSE',
+      name: '均方根誤差',
+      desc: '衡量預測值與真實值間的平均差距。單位與發電量一致 (kW)，數值越小代表誤差越低。',
+      formula: 'sqrt(mean((y_true - y_pred)²))',
+      color: 'text-blue-400'
+    },
+    {
+      id: 'MAE',
+      name: '平均絕對殘差',
+      desc: '預測值與真實值差距的絕對值平均。較不受極端值影響，能直觀反映平均誤差大小。',
+      formula: 'mean(abs(y_true - y_pred))',
+      color: 'text-purple-400'
+    },
+    {
+      id: 'WMAPE',
+      name: '加權平均絕對百分比誤差',
+      desc: '將總絕對誤差除以總實際發電量。相對於 MAPE，它解決了實際值為 0 時的計算問題。',
+      formula: 'sum(abs(error)) / sum(abs(actual))',
+      color: 'text-yellow-500'
+    }
+  ];
   return (
     <div className="min-h-screen w-full bg-background-dark text-white flex flex-col font-sans">
-      <Navbar 
+      <Navbar
         activePage={activePage}
         onNavigateToDashboard={onNavigateToDashboard}
         onNavigateToPredict={onNavigateToPredict}
@@ -486,74 +505,74 @@ export default function ModelTraining({
 
                 {/* Best Params 展示 */}
                 <div className="mt-10 flex flex-col gap-6">
-  {Object.values(trainingResults)
-    .filter(r => r.status === 'ok' && r.best_params && Object.keys(r.best_params).length > 0)
-    .map(res => (
-      <div 
-        key={res.id} 
-        className="w-full p-8 rounded-2xl border border-white/10 bg-white/[0.03] shadow-lg animate-fade-in"
-      >
-        {/* 標題部分 */}
-        <div className="flex items-center justify-between mb-6 border-b border-primary/20 pb-4">
-          <h4 className="text-lg font-bold text-primary flex items-center gap-3">
-            <span className="material-symbols-outlined !text-2xl">tune</span>
-            {res.id} 最佳參數設定結果
-          </h4>
-          {/* <span className="text-[10px] text-white/30 uppercase tracking-[0.2em]">Optimized Parameters</span> */}
-        </div>
+                  {Object.values(trainingResults)
+                    .filter(r => r.status === 'ok' && r.best_params && Object.keys(r.best_params).length > 0)
+                    .map(res => (
+                      <div
+                        key={res.id}
+                        className="w-full p-8 rounded-2xl border border-white/10 bg-white/[0.03] shadow-lg animate-fade-in"
+                      >
+                        {/* 標題部分 */}
+                        <div className="flex items-center justify-between mb-6 border-b border-primary/20 pb-4">
+                          <h4 className="text-lg font-bold text-primary flex items-center gap-3">
+                            <span className="material-symbols-outlined !text-2xl">tune</span>
+                            {res.id} 最佳參數設定結果
+                          </h4>
+                          {/* <span className="text-[10px] text-white/30 uppercase tracking-[0.2em]">Optimized Parameters</span> */}
+                        </div>
 
-        {/* 參數網格：增加欄數 (md:grid-cols-3 或 4) 讓橫向空間更充裕 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-10 gap-y-4">
-          {Object.entries(res.best_params)
-            .filter(([k]) => !k.startsWith('_'))
-            .map(([key, val]) => (
-              <div key={key} className="flex justify-between items-center py-2 border-b border-white/5">
-                <span className="text-sm text-white/40">{key}</span>
-                <span className="text-sm text-white font-mono font-black">
-                  {typeof val === 'number' 
-                    ? (Number.isInteger(val) ? val : val.toFixed(4)) 
-                    : String(val)}
-                </span>
-              </div>
-            ))}
-        </div>
-      </div>
-    ))}
-</div>
-<div className="mt-12 pt-8 border-t border-white/10">
-  <div className="flex items-center gap-2 mb-6 text-white/60">
-    <span className="material-symbols-outlined !text-xl">help_outline</span>
-    <h3 className="text-sm font-bold tracking-widest uppercase">模型評估指標說明</h3>
-  </div>
-  
-{/* --- 模型評估指標說明 --- */}
-<div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8">
-  {metricExplanations.map((metric) => (
-    <div 
-      key={metric.id} 
-      className="p-8 rounded-2xl border border-white/10 bg-white/[0.04] hover:border-primary/40 transition-all group"
-    >
-      <div className="flex flex-col gap-3 mb-5">
-        <div className="flex items-center gap-4">
-          {/* ID 設為最大：text-2xl (約 24px) */}
-          <span className={`text-2xl font-black px-4 py-1 rounded-xl ${metric.bg} ${metric.color} tracking-tight`}>
-            {metric.id}
-          </span>
-          {/* Name 設為次大：text-lg (約 18px) */}
-          <h5 className="text-lg font-bold text-white/90">
-            {metric.name}
-          </h5>
-        </div>
-      </div>
-      
-      {/* 描述文字：text-lg (約 18px) */}
-      <p className="text-lg text-white/60 leading-relaxed">
-        {metric.desc}
-      </p>
-    </div>
-  ))}
-</div>
-</div>
+                        {/* 參數網格：增加欄數 (md:grid-cols-3 或 4) 讓橫向空間更充裕 */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-10 gap-y-4">
+                          {Object.entries(res.best_params)
+                            .filter(([k]) => !k.startsWith('_'))
+                            .map(([key, val]) => (
+                              <div key={key} className="flex justify-between items-center py-2 border-b border-white/5">
+                                <span className="text-sm text-white/40">{key}</span>
+                                <span className="text-sm text-white font-mono font-black">
+                                  {typeof val === 'number'
+                                    ? (Number.isInteger(val) ? val : val.toFixed(4))
+                                    : String(val)}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+                <div className="mt-12 pt-8 border-t border-white/10">
+                  <div className="flex items-center gap-2 mb-6 text-white/60">
+                    <span className="material-symbols-outlined !text-xl">help_outline</span>
+                    <h3 className="text-sm font-bold tracking-widest uppercase">模型評估指標說明</h3>
+                  </div>
+
+                  {/* --- 模型評估指標說明 --- */}
+                  <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {metricExplanations.map((metric) => (
+                      <div
+                        key={metric.id}
+                        className="p-8 rounded-2xl border border-white/10 bg-white/[0.04] hover:border-primary/40 transition-all group"
+                      >
+                        <div className="flex flex-col gap-3 mb-5">
+                          <div className="flex items-center gap-4">
+                            {/* ID 設為最大：text-2xl (約 24px) */}
+                            <span className={`text-2xl font-black px-4 py-1 rounded-xl ${metric.bg} ${metric.color} tracking-tight`}>
+                              {metric.id}
+                            </span>
+                            {/* Name 設為次大：text-lg (約 18px) */}
+                            <h5 className="text-lg font-bold text-white/90">
+                              {metric.name}
+                            </h5>
+                          </div>
+                        </div>
+
+                        {/* 描述文字：text-lg (約 18px) */}
+                        <p className="text-lg text-white/60 leading-relaxed">
+                          {metric.desc}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="text-center opacity-20 py-20">

@@ -86,13 +86,6 @@ export default function PredictSolar({
   onNavigateToPredict, 
   onNavigateToChangePassword,
   onNavigateToModelMgmt 
-}){
-  onNavigateToDashboard,
-  onLogout,
-  onNavigateToSites,
-  onNavigateToTrain,
-  onNavigateToPredict,
-  onNavigateToModelMgmt
 }) {
   const [file, setFile] = useState(null);
   const [selectedModelIds, setSelectedModelIds] = useState([]);

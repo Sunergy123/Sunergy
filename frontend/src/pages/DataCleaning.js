@@ -459,6 +459,7 @@ export default function DataCleaning({
   onNavigateToSites,
   onOpenCreateSite,
   onNavigateToPredict,
+  onNavigateToChangePassword,
   onNavigateToModelMgmt,
 }) {
   const [tmAllZero, setTmAllZero] = useState(false);
@@ -847,6 +848,7 @@ export default function DataCleaning({
         onNavigateToSites={onNavigateToSites}
         onNavigateToPredict={onNavigateToPredict}
         onNavigateToModelMgmt={onNavigateToModelMgmt}
+        onNavigateToChangePassword={onNavigateToChangePassword}
         onLogout={onLogout}
       />
 

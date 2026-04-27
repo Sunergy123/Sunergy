@@ -84,6 +84,7 @@ export default function PredictSolar({
   onNavigateToSites, 
   onNavigateToTrain, 
   onNavigateToPredict, 
+  onNavigateToChangePassword,
   onNavigateToModelMgmt 
 }){
   const [file, setFile] = useState(null);
@@ -190,7 +191,7 @@ export default function PredictSolar({
     }
   };
 
-  const navProps = { onNavigateToDashboard, onNavigateToTrain, onNavigateToPredict, onNavigateToSites, onNavigateToModelMgmt, onLogout };
+  const navProps = { onNavigateToDashboard, onNavigateToTrain, onNavigateToPredict, onNavigateToSites, onNavigateToModelMgmt, onNavigateToChangePassword,onLogout };
 
   const displayCols = result ? result.columns : [];
 

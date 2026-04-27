@@ -57,6 +57,7 @@ export default function ModelTraining({
   onNavigateToModelMgmt,
   onLogout,
   onNavigateToSites,
+  onNavigateToChangePassword,
   activePage
 }){
   const [splitRatio, setSplitRatio] = useState(80);
@@ -248,6 +249,7 @@ export default function ModelTraining({
         onNavigateToPredict={onNavigateToPredict}
         onNavigateToSites={onNavigateToSites}
         onNavigateToModelMgmt={onNavigateToModelMgmt}
+        onNavigateToChangePassword={onNavigateToChangePassword}
         onLogout={onLogout}
       />
 

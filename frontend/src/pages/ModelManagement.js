@@ -7,6 +7,7 @@ export default function ModelManagement({
   onNavigateToPredict,
   onNavigateToSites,
   onNavigateToModelMgmt,
+  onNavigateToChangePassword,
   onLogout,
   activePage
 }) {
@@ -22,6 +23,7 @@ export default function ModelManagement({
     onNavigateToPredict,
     onNavigateToSites,
     onNavigateToModelMgmt,
+    onNavigateToChangePassword,
     onLogout
   };
 

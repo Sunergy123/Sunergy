@@ -11,6 +11,7 @@ export default function StartPredict({
   onNavigateToPredict,
   onNavigateToSites,
   onNavigateToModelMgmt, 
+  onNavigateToChangePassword,
   onLogout,
   restoredFromVisualization = false,
   fromSite = false,
@@ -248,6 +249,7 @@ export default function StartPredict({
         onNavigateToSites={onNavigateToSites}
         onNavigateToTrain={onNavigateToTrain}         
         onNavigateToModelMgmt={onNavigateToModelMgmt}   
+        onNavigateToChangePassword={onNavigateToChangePassword}
         onLogout={onLogout}
       />
 

@@ -9,6 +9,7 @@ export default function DataVariableGuide({
   onNavigateToSites,
   onNavigateToTrain,     
   onNavigateToModelMgmt, 
+  onNavigateToChangePassword,
   onLogout,
   restoredFromVisualization = false,
 }) 
@@ -29,6 +30,7 @@ export default function DataVariableGuide({
         onLogout={onLogout}
         onNavigateToTrain={onNavigateToTrain} 
         onNavigateToModelMgmt={onNavigateToModelMgmt}
+        onNavigateToChangePassword={onNavigateToChangePassword}
       />
 
       <main className="flex-1 w-full max-w-4xl mx-auto p-6 py-12 flex flex-col gap-10">

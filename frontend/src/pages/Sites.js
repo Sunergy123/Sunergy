@@ -12,6 +12,7 @@ export default function Sites({
   onNavigateToTrain,
   onOpenCreateSite,
   onOpenEditSite,
+  onNavigateToChangePassword,
   onSelectSite,
   user,
 }) {
@@ -111,6 +112,7 @@ export default function Sites({
         onNavigateToSites={onNavigateToSites}
         onNavigateToTrain={onNavigateToTrain}
         onNavigateToModelMgmt={onNavigateToModelMgmt}
+        onNavigateToChangePassword={onNavigateToChangePassword}
         onLogout={onLogout}
       />
 

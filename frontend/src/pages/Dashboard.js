@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 
-const CarbonReductionSection = ({ totalGeneration = 2450 }) => {
+const CarbonReductionSection = ({ totalGeneration, onOpenModal }) => {
   // 2024年台灣電力排碳係數假設為 0.494 kgCO₂e/kWh (請依實際需求調整)
   const carbonFactor = 0.494; 
   const totalReduction = (totalGeneration * carbonFactor).toFixed(2);
@@ -23,10 +23,19 @@ const CarbonReductionSection = ({ totalGeneration = 2450 }) => {
 
       {/* B & C. 減碳量計算與累積數值 */}
       <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-gradient-to-br from-green-900/20 to-white/[0.03] p-6 shadow-lg">
-        <h3 className="text-base font-medium text-white/80 flex items-center gap-2">
-          <span className="material-symbols-outlined text-green-400">eco</span>
-          環境減碳效益
-        </h3>
+        <div className="flex justify-between items-center">
+          <h3 className="text-base font-medium text-white/80 flex items-center gap-2">
+            <span className="material-symbols-outlined text-green-400">eco</span>
+            環境減碳效益
+          </h3>
+
+          <button
+            onClick={onOpenModal}
+            className="text-xs bg-white/10 px-3 py-1 rounded-lg hover:bg-white/20"
+          >
+            選擇檔案
+          </button>
+        </div>
         
         {/* C. 累積減碳量數值 */}
         <div className="text-center my-4">
@@ -119,25 +128,94 @@ export default function Dashboard({
   onNavigateToChangePassword,
 }) {
   // 尋找 const [searchTerm, setSearchTerm] = useState(''); 附近
-  const [stats, setStats] = useState({ total_kwh: 0, total_carbon_reduction: 0 }); // ⭐ 新增這行
+  const [stats, setStats] = useState({ total_kwh: 0, total_carbon_reduction: 0 }); 
   const [searchTerm, setSearchTerm] = useState('');
   const [allModels, setAllModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(true);
   const [modelError, setModelError] = useState('');
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case '已部署':
-        return 'bg-green-500/20 text-green-400 border border-green-500/30';
-      case '閒置中':
-        return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30';
-      case '測試中':
-        return 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
-      case '已建立':
-        return 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30';
-      default:
-        return 'bg-white/10 text-white/60';
+  const [sites, setSites] = useState([]); // 所有案場
+  const [selectedSites, setSelectedSites] = useState([]);
+  const [datasets, setDatasets] = useState([]);
+  const [selectedDatasets, setSelectedDatasets] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const [dataPage, setDataPage] = useState(1);
+
+  const fetchSites = async () => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user"));
+      if (!user?.user_id) return;
+
+      const res = await fetch(`http://127.0.0.1:8000/train/sites?user_id=${user.user_id}`);
+      const data = await res.json();
+
+      console.log("API回傳:", data);
+
+      // ⭐ 防呆
+      if (Array.isArray(data)) {
+        setSites(data);
+      } else if (Array.isArray(data.sites)) {
+        setSites(data.sites);
+      } else {
+        setSites([]);
+      }
+
+    } catch (err) {
+      console.error("載入案場失敗", err);
+      setSites([]);
     }
+  };
+
+  useEffect(() => {
+    fetchSites();
+  }, []);
+
+  const selectedTotalKwh = datasets
+    .flatMap(g => g.datasets || [])
+    .filter(d => selectedDatasets.includes(d.id))
+    .reduce((sum, d) => sum + (d.total_kwh || 0), 0);
+
+  const handleConfirm = async () => {
+    if (selectedDatasets.length === 0) {
+      alert("請選擇資料");
+      return;
+    }
+
+    const user = JSON.parse(localStorage.getItem("user"));
+
+    const params = new URLSearchParams();
+
+    params.append("user_id", user.user_id);
+
+    // ⭐ 多個 site
+    selectedSites.forEach(id => {
+      params.append("site_ids", id);
+    });
+
+    // ⭐ 多個 dataset
+    selectedDatasets.forEach(id => {
+      params.append("upload_ids", id);
+    });
+
+    const url = `http://127.0.0.1:8000/train/dashboard-stats?${params.toString()}`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    setStats(data);
+
+    setIsModalOpen(false);
+  };
+
+  const handleDatasetToggle = (id) => {
+    setSelectedDatasets(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(item => item !== id);
+      } else {
+        return [...prev, id];
+      }
+    });
   };
 
   const fetchModels = async () => {
@@ -224,7 +302,7 @@ export default function Dashboard({
       if (!user?.user_id) return;
 
       // 呼叫你在 train.py 新增的端點
-      const res = await fetch(`http://127.0.0.1:8000/train/dashboard-stats/${user.user_id}`);
+      const res = await fetch(`http://127.0.0.1:8000/train/dashboard-stats?user_id=${user.user_id}`);
       if (!res.ok) throw new Error("統計資料抓取失敗");
       
       const data = await res.json();
@@ -246,179 +324,364 @@ export default function Dashboard({
     .slice(0, 3);
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-background-dark text-white font-sans">
-      <Navbar
-        activePage="dashboard"
-        onNavigateToDashboard={() => {
-          fetchModels();   // ⭐ 關鍵
-          onNavigateToDashboard();
-        }}
-        onNavigateToTrain={onNavigateToTrain}
-        onNavigateToSites={onNavigateToSites}
-        onNavigateToPredict={onNavigateToPredict}
-        onNavigateToModelMgmt={onNavigateToModelMgmt}
-        onNavigateToChangePassword={onNavigateToChangePassword}
-        onLogout={onLogout}
-      />
+    <>
+      <div className="flex min-h-screen w-full flex-col bg-background-dark text-white font-sans">
+        <Navbar
+          activePage="dashboard"
+          onNavigateToDashboard={() => {
+            fetchModels();   // ⭐ 關鍵
+            onNavigateToDashboard();
+          }}
+          onNavigateToTrain={onNavigateToTrain}
+          onNavigateToSites={onNavigateToSites}
+          onNavigateToPredict={onNavigateToPredict}
+          onNavigateToModelMgmt={onNavigateToModelMgmt}
+          onNavigateToChangePassword={onNavigateToChangePassword}
+          onLogout={onLogout}
+        />
 
-      <main className="flex-1 w-full max-w-7xl mx-auto p-6 sm:p-10">
-        <div className="mb-8 flex items-end justify-between border-b border-white/10 pb-4">
-          <div>
-            <h1 className="text-3xl font-bold">首頁</h1>
-            <p className="text-sm text-white/40">我的案場概況</p>
+        <main className="flex-1 w-full max-w-7xl mx-auto p-6 sm:p-10">
+          <div className="mb-8 flex items-end justify-between border-b border-white/10 pb-4">
+            <div>
+              <h1 className="text-3xl font-bold">首頁</h1>
+              <p className="text-sm text-white/40">我的案場概況</p>
+            </div>
+            <button
+              onClick={() => onNavigateToTrain({ fromSite: false })}
+              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-background-dark text-sm font-bold transition-transform hover:scale-105"
+            >
+              <span className="material-symbols-outlined !text-lg font-bold">play_arrow</span>
+              開始訓練模型
+            </button>
           </div>
-          <button
-            onClick={() => onNavigateToTrain({ fromSite: false })}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-background-dark text-sm font-bold transition-transform hover:scale-105"
-          >
-            <span className="material-symbols-outlined !text-lg font-bold">play_arrow</span>
-            開始訓練模型
-          </button>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-7 flex flex-col gap-16">
-            <section>
-              <h2 className="text-xl font-bold mb-4">系統願景</h2>
-              <SystemIntroduction />
-            </section>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="lg:col-span-7 flex flex-col gap-16">
+              <section>
+                <h2 className="text-xl font-bold mb-4">系統願景</h2>
+                <SystemIntroduction />
+              </section>
 
-            <section className="bg-white/[0.02] rounded-2xl p-6 border border-white/10">
-              <div className="flex justify-between mb-6">
-                <h2 className="text-xl font-bold">已建立模型</h2>
-                <input
-                  type="text"
-                  placeholder="搜尋模型..."
-                  className="bg-white/5 border border-white/10 rounded-lg py-1 px-4 text-xs focus:outline-none focus:border-primary/40 transition-all"
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
+              <section className="bg-white/[0.02] rounded-2xl p-6 border border-white/10">
+                <div className="flex justify-between mb-6">
+                  <h2 className="text-xl font-bold">已建立模型</h2>
+                  <input
+                    type="text"
+                    placeholder="搜尋模型..."
+                    className="bg-white/5 border border-white/10 rounded-lg py-1 px-4 text-xs focus:outline-none focus:border-primary/40 transition-all"
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
 
-              <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                {loadingModels ? (
-                  <p className="text-sm text-white/50">模型載入中...</p>
-                ) : modelError ? (
-                  <p className="text-sm text-red-400">{modelError}</p>
-                ) : filteredModels.length === 0 ? (
-                  <p className="text-sm text-white/50">目前沒有已建立模型</p>
-                ) : (
-                  filteredModels.map((model) => (
-                    <div
-                      key={model.id}
-                      className="flex justify-between border-b border-white/5 pb-4 last:border-0"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-lg font-bold">{model.name}</h3>
+                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                  {loadingModels ? (
+                    <p className="text-sm text-white/50">模型載入中...</p>
+                  ) : modelError ? (
+                    <p className="text-sm text-red-400">{modelError}</p>
+                  ) : filteredModels.length === 0 ? (
+                    <p className="text-sm text-white/50">目前沒有已建立模型</p>
+                  ) : (
+                    filteredModels.map((model) => (
+                      <div
+                        key={model.id}
+                        className="flex justify-between border-b border-white/5 pb-4 last:border-0"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-lg font-bold">{model.name}</h3>
+                          </div>
+
+                          <p className="text-xs text-white/30 mt-1 font-mono">
+                            訓練日期: {model.date}
+                          </p>
+                          <p className="text-xs text-white/20 mt-1">
+                            類型: {model.type} | 使用資料：{model.fileName}
+                          </p>
                         </div>
 
-                        <p className="text-xs text-white/30 mt-1 font-mono">
-                          訓練日期: {model.date}
-                        </p>
-                        <p className="text-xs text-white/20 mt-1">
-                          類型: {model.type} | 使用資料：{model.fileName}
-                        </p>
+                        <span className="material-symbols-outlined text-white/20 cursor-pointer hover:text-white transition-colors">
+                          more_vert
+                        </span>
                       </div>
+                    ))
+                  )}
+                </div>
+              </section>
+            </div>
 
-                      <span className="material-symbols-outlined text-white/20 cursor-pointer hover:text-white transition-colors">
-                        more_vert
-                      </span>
+            {/* --- Dashboard.js 右側欄位 (lg:col-span-5) --- */}
+            <div className="lg:col-span-5 flex flex-col gap-8">
+              
+              {/* 使用新封裝的減碳效益區塊，取代舊的兩個卡片 */}
+              <CarbonReductionSection 
+                totalGeneration={stats.total_kwh}
+                onOpenModal={() => setIsModalOpen(true)}
+              />
+
+              <section>
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary">leaderboard</span>
+                  最常用模型排名
+                </h2>
+
+                <div className="flex flex-col gap-4">
+                  {topModels.length === 0 ? (
+                    <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-5">
+                      <p className="text-white/40 text-sm">目前尚無模型資料</p>
                     </div>
-                  ))
-                )}
-              </div>
-            </section>
-          </div>
+                  ) : (
+                    topModels.map((model, index) => (
+                      <div
+                        key={model.id}
+                        className="bg-white/[0.03] border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-primary/50 transition-all"
+                      >
+                        <div className="flex items-center gap-5">
+                          <div
+                            className={`text-2xl font-black italic ${
+                              index === 0 ? 'text-primary' : 'text-white/20'
+                            }`}
+                          >
+                            0{index + 1}
+                          </div>
 
-          {/* --- Dashboard.js 右側欄位 (lg:col-span-5) --- */}
-          <div className="lg:col-span-5 flex flex-col gap-8">
-            
-            {/* 使用新封裝的減碳效益區塊，取代舊的兩個卡片 */}
-            <CarbonReductionSection totalGeneration={stats.total_kwh} />
-
-            <section>
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary">leaderboard</span>
-                最常用模型排名
-              </h2>
-
-              <div className="flex flex-col gap-4">
-                {topModels.length === 0 ? (
-                  <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-5">
-                    <p className="text-white/40 text-sm">目前尚無模型資料</p>
-                  </div>
-                ) : (
-                  topModels.map((model, index) => (
-                    <div
-                      key={model.id}
-                      className="bg-white/[0.03] border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-primary/50 transition-all"
-                    >
-                      <div className="flex items-center gap-5">
-                        <div
-                          className={`text-2xl font-black italic ${
-                            index === 0 ? 'text-primary' : 'text-white/20'
-                          }`}
-                        >
-                          0{index + 1}
-                        </div>
-
-                        <div className="flex-1">
-                          <div className="flex justify-between items-start mb-1">
-                            <h3 className="font-bold text-white text-lg">{model.name}</h3>
-                            <div className="text-right">
-                              <span className="text-[9px] text-white/40 block uppercase leading-none mb-1">
-                                使用次數
-                              </span>
-                              <span className="text-primary font-mono font-bold text-base">
-                                {model.usage} 次
-                              </span>
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start mb-1">
+                              <h3 className="font-bold text-white text-lg">{model.name}</h3>
+                              <div className="text-right">
+                                <span className="text-[9px] text-white/40 block uppercase leading-none mb-1">
+                                  使用次數
+                                </span>
+                                <span className="text-primary font-mono font-bold text-base">
+                                  {model.usage} 次
+                                </span>
+                              </div>
                             </div>
-                          </div>
 
-                          <div className="flex justify-center my-3">
-                            <div className="w-4/5 h-[1px] bg-white/5"></div>
-                          </div>
+                            <div className="flex justify-center my-3">
+                              <div className="w-4/5 h-[1px] bg-white/5"></div>
+                            </div>
 
-                          <div className="flex justify-between items-end">
-                            {/* <div>
-                              <p className="text-[10px] text-white/30 uppercase leading-none mb-1">
-                                歷史準確度
-                              </p>
-                              <p className="text-sm font-bold text-green-400">{model.acc}</p>
-                            </div> */}
-                            <div>
-                              <p className="text-[10px] text-white/30 uppercase leading-none mb-1">
-                                模型資訊
-                              </p>
+                            <div className="flex justify-between items-end">
+                              {/* <div>
+                                <p className="text-[10px] text-white/30 uppercase leading-none mb-1">
+                                  歷史準確度
+                                </p>
+                                <p className="text-sm font-bold text-green-400">{model.acc}</p>
+                              </div> */}
+                              <div>
+                                <p className="text-[10px] text-white/30 uppercase leading-none mb-1">
+                                  模型資訊
+                                </p>
 
-                              <div className="text-sm text-white/70 font-mono space-y-1">
+                                <div className="text-sm text-white/70 font-mono space-y-1">
 
-                                {/* 第一行 */}
-                                <div className="break-words">
-                                  {model.fileName} ｜ {model.date}
+                                  {/* 第一行 */}
+                                  <div className="break-words">
+                                    {model.fileName} ｜ {model.date}
+                                  </div>
+
+                                  {/* 第三行：指標（重點🔥） */}
+                                  <div className="grid grid-cols-2 gap-x-4 text-xs text-green-400">
+                                    <span>R²: {model.r2 ?? '—'}</span>
+                                    <span>WMAPE: {model.wmape ?? '—'}</span>
+                                    <span>RMSE: {model.rmse ?? '—'}</span>
+                                    <span>MAE: {model.mae ?? '—'}</span>
+                                  </div>
+
                                 </div>
-
-                                {/* 第三行：指標（重點🔥） */}
-                                <div className="grid grid-cols-2 gap-x-4 text-xs text-green-400">
-                                  <span>R²: {model.r2 ?? '—'}</span>
-                                  <span>WMAPE: {model.wmape ?? '—'}</span>
-                                  <span>RMSE: {model.rmse ?? '—'}</span>
-                                  <span>MAE: {model.mae ?? '—'}</span>
-                                </div>
-
                               </div>
                             </div>
                           </div>
                         </div>
                       </div>
+                    ))
+                  )}
+                </div>
+              </section>
+            </div>
+          </div>
+        </main>
+      </div>
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#1a1a1a] rounded-xl p-6 w-[400px]">
+
+            {/* ===== 案場 ===== */}
+            <h2 className="text-lg font-bold mb-2">選擇案場（可多選）</h2>
+
+            {/* ✅ 只讓案場滾動 */}
+            <div className="bg-black rounded p-2 max-h-[120px] overflow-y-auto space-y-2 mb-4">
+              {sites.map(site => (
+                <label key={site.site_id} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedSites.includes(site.site_id)}
+                    onChange={async () => {
+                      let newSelected;
+
+                      if (selectedSites.includes(site.site_id)) {
+                        newSelected = selectedSites.filter(id => id !== site.site_id);
+                      } else {
+                        newSelected = [...selectedSites, site.site_id];
+                      }
+
+                      setSelectedSites(newSelected);
+                      setDataPage(1);
+                      setSelectedDatasets([]);
+
+                      try {
+                        const requests = newSelected.map(id =>
+                          fetch(`http://127.0.0.1:8000/train/site-datasets?site_id=${id}`)
+                            .then(res => res.json())
+                            .then(data => ({
+                              site_id: id,
+                              datasets: data
+                            }))
+                        );
+
+                        const results = await Promise.all(requests);
+                        setDatasets(results);
+                      } catch (err) {
+                        console.error("載入資料失敗", err);
+                        setDatasets([]);
+                      }
+                    }}
+                  />
+                  <span>{site.site_name}（{site.location}）</span>
+                </label>
+              ))}
+            </div>
+
+            {/* ===== 資料 ===== */}
+            <h2 className="text-lg font-bold mb-2">選擇資料</h2>
+
+            {/* 已選擇 */}
+            <div className="text-xs text-green-400 mb-2">
+              已選擇：
+              {selectedDatasets.length === 0
+                ? " 無"
+                : datasets
+                    .flatMap(g => g.datasets || [])
+                    .filter(d => selectedDatasets.includes(d.id))
+                    .map(d => d.name)
+                    .join("、")
+              }
+            </div>
+
+            {/* ⭐ 分頁資料 */}
+            <div className="bg-black rounded p-2 space-y-2">
+              {(() => {
+                const dataPerPage = 5;
+
+                // ⭐ 1. 先攤平成一個陣列（帶 site_id）
+                const allData = datasets
+                  .flatMap(group =>
+                    (group.datasets || []).map(d => ({
+                      ...d,
+                      site_id: group.site_id
+                    }))
+                  )
+                  .sort((a, b) => {
+                    // 先用 site_id 排
+                    if (a.site_id !== b.site_id) {
+                      return a.site_id - b.site_id;
+                    }
+                    // 再用時間排（新到舊）
+                    return new Date(b.time) - new Date(a.time);
+                  });
+
+                // ⭐ 2. 再做分頁（全域分頁）
+                const paginatedData = allData.slice(
+                  (dataPage - 1) * dataPerPage,
+                  dataPage * dataPerPage
+                );
+
+                // ⭐ 3. 再依 site 分組（只針對當頁）
+                const grouped = paginatedData.reduce((acc, item) => {
+                  if (!acc[item.site_id]) acc[item.site_id] = [];
+                  acc[item.site_id].push(item);
+                  return acc;
+                }, {});
+
+                // ⭐ 4. render
+                return Object.entries(grouped).map(([site_id, items]) => {
+                  const site = sites.find(s => s.site_id == site_id);
+
+                  return (
+                    <div key={site_id} className="mb-4">
+
+                      {/* 案場名稱 */}
+                      <div className="text-xs text-yellow-400 mb-1">
+                        📍 {site?.site_name}（{site?.location}）
+                      </div>
+
+                      {/* 該案場資料 */}
+                      {items.map(d => (
+                        <label key={d.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedDatasets.includes(d.id)}
+                            onChange={() => handleDatasetToggle(d.id)}
+                          />
+                          <span>
+                            {d.name} ｜ {d.time ? new Date(d.time).toLocaleString() : ''}
+                          </span>
+                        </label>
+                      ))}
                     </div>
-                  ))
-                )}
-              </div>
-            </section>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* ⭐ 分頁控制（👉 正確位置：資料下面） */}
+            {(() => {
+              const allData = datasets.flatMap(g => g.datasets || []);
+              const dataPerPage = 5;
+              const totalPage = Math.ceil(allData.length / dataPerPage);
+
+              return (
+                <div className="flex justify-between mt-2 text-xs">
+                  <button
+                    disabled={dataPage === 1}
+                    onClick={() => setDataPage(p => p - 1)}
+                    className="px-2 py-1 bg-white/10 rounded disabled:opacity-30"
+                  >
+                    上一頁
+                  </button>
+
+                  <span className="text-white/40">
+                    第 {dataPage} / {totalPage || 1} 頁
+                  </span>
+
+                  <button
+                    disabled={dataPage >= totalPage}
+                    onClick={() => setDataPage(p => p + 1)}
+                    className="px-2 py-1 bg-white/10 rounded disabled:opacity-30"
+                  >
+                    下一頁
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* ===== 按鈕 ===== */}
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2 bg-white/10 rounded-lg"
+              >
+                取消
+              </button>
+
+              <button onClick={handleConfirm}>
+                確認
+              </button>
+            </div>
+
           </div>
         </div>
-      </main>
-    </div>
+      )}
+    </>
   );
 }

@@ -699,29 +699,73 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
         "warnings": warnings,
     })
 
-@router.get("/dashboard-stats/{user_id}")
-def get_dashboard_stats(user_id: int, db: Session = Depends(get_db)):
-    """
-    計算該使用者的減碳效益統計資料
-    """
-    # 1. 取得該使用者所有模型關聯的總發電量 (EAC)
-    # 邏輯：透過 Site 關聯 TrainedModel，再透過 TrainedModel 關聯 SiteData
-    # 這裡計算的是所有上傳資料的總和
-    total_eac = (
+@router.get("/sites")
+def get_user_sites(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    sites = db.query(Site).filter(Site.user_id == user_id).all()
+
+    return [
+        {
+            "site_id": s.site_id,
+            "site_name": s.site_name,
+            "location": s.location,
+        }
+        for s in sites
+    ]
+
+@router.get("/site-datasets")
+def get_site_datasets(site_id: int, db: Session = Depends(get_db)):
+
+    rows = (
+        db.query(
+            SiteData.upload_id,
+            SiteData.data_name,
+            func.max(SiteData.created_at).label("created_at")
+        )
+        .filter(SiteData.site_id == site_id)
+        .group_by(SiteData.upload_id, SiteData.data_name)
+        .order_by(func.max(SiteData.created_at).desc())
+        .all()
+    )
+
+    return [
+        {
+            "id": r.upload_id,
+            "name": r.data_name,
+            "time": r.created_at.isoformat() if r.created_at else None
+        }
+        for r in rows
+    ]
+
+@router.get("/dashboard-stats")
+def get_dashboard_stats(
+    user_id: int,
+    site_ids: List[int] = Query(None),
+    upload_ids: List[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    query = (
         db.query(func.sum(SiteData.eac))
         .join(Site, SiteData.site_id == Site.site_id)
         .filter(Site.user_id == user_id)
-        .scalar()
-    ) or 0
+    )
 
-    # 2. 定義電力排碳係數 (根據最新公告)
-    carbon_factor = 0.494 
-    
-    # 3. 計算總減碳量
+    # 多案場
+    if site_ids:
+        query = query.filter(SiteData.site_id.in_(site_ids))
+
+    # 多資料
+    if upload_ids:
+        query = query.filter(SiteData.upload_id.in_(upload_ids))
+
+    total_eac = query.scalar() or 0
+
+    carbon_factor = 0.494
     total_carbon_reduction = round(total_eac * carbon_factor, 2)
 
     return {
-        "user_id": user_id,
         "total_kwh": round(total_eac, 2),
         "carbon_factor": carbon_factor,
         "total_carbon_reduction": total_carbon_reduction

@@ -61,7 +61,16 @@ export default function DataVariableGuide({
           <div>
             <h4 className="font-bold text-yellow-500 mb-1 text-base">重要提示：變數自動過濾</h4>
             <p className="text-sm text-yellow-500/80 leading-relaxed">
-              除了上述三個變數（GI, TM, EAC）外，上傳資料中的其餘變數（如風速、濕度、電流等）將被系統視為雜訊並<b>自動排除</b>，不會進入訓練流程。請確保您的 CSV 或 Excel 檔案中包含這些必要欄位。
+              除了上述三個變數（GI, TM, EAC）外，上傳資料中的其餘變數（如風速、濕度、電流等）將被系統視為雜訊並<b>自動排除</b>，不會進入訓練流程。
+              
+              <br /><br />
+              
+              ⚠️ 時間格式需為<b>每小時一筆資料</b>（例如：00:00、01:00、02:00），
+              不支援半小時（如 00:30）或更細粒度資料，否則可能影響模型訓練結果。
+              
+              <br /><br />
+              
+              請確保您的 CSV 或 Excel 檔案中包含這些必要欄位與正確的時間間隔。
             </p>
           </div>
         </div>

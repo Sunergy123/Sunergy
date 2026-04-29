@@ -449,6 +449,30 @@ function RenderPairScatter({ rowVar, colVar, plots }) {
   );
 }
 
+function InfoTooltip({ text }) {
+  return (
+    <div className="relative group inline-block">
+      {/* SVG 問號 */}
+      <svg
+        className="ml-1 w-4 h-4 text-white/40 cursor-pointer"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        viewBox="0 0 24 24"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.5 9a2.5 2.5 0 1 1 4.5 1.5c-.5.7-1.5 1.2-1.5 2.5" />
+        <circle cx="12" cy="17" r="0.8" fill="currentColor" />
+      </svg>
+
+      {/* Tooltip */}
+      <div className="absolute z-50 hidden group-hover:block w-72 p-3 rounded-lg bg-black text-white text-xs shadow-xl border border-white/10 -top-2 left-6">
+        {text}
+      </div>
+    </div>
+  );
+}
+
 export default function DataCleaning({
   fileName: propFileName,
   onBack,
@@ -923,7 +947,10 @@ export default function DataCleaning({
                   onChange={(e) => setApplyOutlier(e.target.checked)}
                   className="w-5 h-5"
                 />
-                <span className="text-sm font-medium">離群值處理</span>
+                <span className="text-sm font-medium flex items-center">
+                  離群值處理
+                  <InfoTooltip text="用於偵測並移除異常資料點（離群值），避免模型被極端值影響。" />
+                </span>
               </label>
 
               <select
@@ -938,6 +965,22 @@ export default function DataCleaning({
                 <option value="isolation_forest">Isolation Forest</option>
               </select>
 
+              <InfoTooltip
+                text={
+                  `IQR（綜合）：
+              依據四分位距(Q1, Q3)，超出範圍的資料視為離群值，適合整體判斷。
+
+              IQR（單欄位）：
+              針對單一變數判斷離群值，較敏感。
+
+              Z-score：
+              利用平均數與標準差，超過閾值（如 ±3）視為離群值。
+
+              Isolation Forest：
+              機器學習方法，透過隨機切分資料偵測異常，適合高維資料。`
+                }
+              />
+
               {outlierMethod.startsWith("iqr") && (
                 <div className="flex items-center gap-2">
                   <input
@@ -948,6 +991,7 @@ export default function DataCleaning({
                     onChange={(e) => setIqrFactor(Number(e.target.value))}
                     className="w-20 bg-gray-800 px-2 py-1 rounded text-sm disabled:opacity-40"
                   />
+                  <InfoTooltip text="IQR係數越小 → 越容易判定為離群值（越嚴格）。常用 1.5，這裡建議 0.5–1.5。" />
                   <div className="text-xs text-white/60">
                     IQR 係數越小，判定越嚴格（建議 0.5–1.5）
                   </div>
@@ -964,6 +1008,7 @@ export default function DataCleaning({
                     onChange={(e) => setZThreshold(Number(e.target.value))}
                     className="w-20 bg-gray-800 px-2 py-1 rounded text-sm disabled:opacity-40"
                   />
+                  <InfoTooltip text="Z 值代表距離平均數幾個標準差，數值越小 → 越容易被判定為離群值。" />
                   <div className="text-xs text-white/60">
                     Z 值越小，判定越嚴格（建議 2–3）
                   </div>
@@ -980,6 +1025,7 @@ export default function DataCleaning({
                     onChange={(e) => setIsolationContamination(Number(e.target.value))}
                     className="w-20 bg-gray-800 px-2 py-1 rounded text-sm disabled:opacity-40"
                   />
+                  <InfoTooltip text="contamination 表示你預期資料中有多少比例是離群值，例如 0.05 = 5%。" />
                   <div className="text-xs text-white/60">
                     表示預期離群值比例（例如 0.05 ≈ 5%）
                   </div>

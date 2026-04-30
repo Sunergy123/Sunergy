@@ -1,0 +1,748 @@
+# 資訊競賽評審提問 — 系統各部分完整 Q&A
+
+> 以下模擬資訊競賽評審針對 Sunergy 太陽能發電預測平台的**整體系統**提問，涵蓋架構、資料庫、安全、前端、後端、API 設計、部署等各個面向。
+
+---
+
+## 壹、系統架構與技術選型
+
+### Q1：為什麼選擇前後端分離架構？
+
+**🎤 評審提問：**
+
+> 你們的系統採用 React 前端 + FastAPI 後端的分離架構，為什麼沒有使用 Django 全端框架或 Next.js 全端方案？
+
+**✅ 建議回答：**
+
+選擇前後端分離的原因有三：
+
+1. **職責分離**：後端專注在 ML 運算和資料庫操作，前端專注在互動體驗。太陽能預測系統涉及大量圖表渲染、即時狀態管理（訓練進度、多模型選擇），這些在 React 的組件化架構中實現得更自然。
+
+2. **FastAPI 的非同步性能**：FastAPI 基於 ASGI (Starlette)，天然支援非同步 I/O。模型訓練涉及大量 CPU 運算（scikit-learn、XGBoost），FastAPI 的非同步特性讓伺服器在等待 ML 運算時仍能處理其他請求。相比 Django 的 WSGI 架構更適合。
+
+3. **Pydantic 驗證**：FastAPI 內建 Pydantic 模型驗證（`schemas.py`），對於複雜的訓練參數結構（巢狀的 `{start, end, step}` 格式）提供了開箱即用的型別安全。
+
+4. **不選 Django 的原因**：Django 的 ORM 和 Admin 功能在我們的場景中過重；我們只需要 RESTful API，FastAPI 更輕量。
+
+5. **不選 Next.js 的原因**：Next.js 的 Server Components 無法直接整合 Python ML 生態系（scikit-learn、XGBoost 等），會需要另外維護一個 Python 微服務，反而增加複雜度。
+
+---
+
+### Q2：為什麼使用 PostgreSQL 而不是 MySQL 或 MongoDB？
+
+**🎤 評審提問：**
+
+> 資料庫選擇了 PostgreSQL，有什麼特殊原因嗎？
+
+**✅ 建議回答：**
+
+最關鍵的原因是 PostgreSQL 原生支援 **JSONB 欄位型別**。
+
+我們的 `TrainedModel` 表中有 `parameters` 和 `metrics` 兩個欄位使用 JSONB：
+
+```python
+# models.py
+parameters = Column(JSONB)   # 儲存超參數組合（結構不固定）
+metrics = Column(JSONB)      # 儲存評估指標（可能擴充）
+```
+
+不同模型的超參數結構完全不同（SVR 有 C/epsilon/gamma，XGBoost 有 8 個參數），JSONB 讓我們不需要為每種模型建立不同的表或大量 nullable 欄位。
+
+此外，PostgreSQL 支援 `CHECK constraint`，我們用它來實現資料血統追蹤：
+
+```sql
+CONSTRAINT check_data_source CHECK (
+    (upload_id IS NOT NULL AND after_id IS NULL) OR
+    (upload_id IS NULL AND after_id IS NOT NULL)
+)
+```
+
+MySQL 直到 8.0.16 才完整支援 CHECK constraint，且 JSONB 的查詢性能不如 PostgreSQL。MongoDB 雖然適合非結構化資料，但我們的核心資料（User、Site、SiteData）是強關聯的，關聯式資料庫更合適。
+
+---
+
+### Q3：`Base.metadata.create_all()` 的自動建表策略
+
+**🎤 評審提問：**
+
+> 你們在 `main.py` 中使用 `Base.metadata.create_all(bind=engine)` 來自動建表。這在生產環境中是否合適？有什麼風險？
+
+**✅ 建議回答：**
+
+`create_all()` 適用於開發和原型階段，但**不適合生產環境**，原因如下：
+
+1. **只能建表，不能改表**：如果 `models.py` 修改了欄位（如改名或刪除），`create_all()` 不會更新現有表結構，它只建立不存在的新表。
+
+2. **無版本控制**：無法追蹤資料庫結構的變更歷史。
+
+3. **生產環境的正確做法**：應使用 **Alembic**（SQLAlchemy 的遷移工具），它可以：
+   - 自動偵測 models.py 的變更
+   - 生成遷移腳本（`alembic revision --autogenerate`）
+   - 支援升級和降級（`alembic upgrade/downgrade`）
+
+我們目前是學術展示階段，`create_all()` 足夠使用。如果進入生產，會引入 Alembic。
+
+---
+
+## 貳、資料庫設計
+
+### Q4：為什麼 SiteData 和 AfterData 是分開的表？
+
+**🎤 評審提問：**
+
+> 你們有 `SiteData`（原始資料）和 `AfterData`（清洗後資料）兩張表。為什麼不在同一張表裡用一個 `is_cleaned` 欄位區分？
+
+**✅ 建議回答：**
+
+分開的設計有兩個核心原因：
+
+1. **結構不同**：
+   - `SiteData` 逐筆儲存每條發電紀錄（date, hour, gi, tm, eac），可能有數千筆
+   - `AfterData` 不儲存逐筆數據，而是儲存一個**清洗快照的 metadata**（檔案路徑、清洗方法、移除比例等），實際清洗後的數據儲存為 CSV 檔案
+
+   ```python
+   # AfterData 的關鍵欄位
+   file_path = Column(String)           # CSV 檔案路徑
+   outlier_method = Column(String)       # 使用的離群值方法
+   before_rows = Column(Integer)         # 清洗前筆數
+   after_rows = Column(Integer)          # 清洗後筆數
+   removed_ratio = Column(Float)         # 移除比例
+   outlier_params = Column(JSONB)        # 清洗參數（如 iqr_factor）
+   ```
+
+2. **一份原始資料可以產生多份清洗結果**：使用者可能用 IQR 清洗一次、又用 Z-Score 清洗一次。如果合在同一張表，會有大量冗餘（同樣的原始數據複製多份）。
+
+3. **支援「不清洗直接訓練」**：`TrainedModel` 的 CHECK constraint 允許模型關聯到 `upload_id`（原始資料）或 `after_id`（清洗後資料），這只有在兩者分離時才能用外鍵約束優雅實現。
+
+---
+
+### Q5：刪除案場時的級聯效應
+
+**🎤 評審提問：**
+
+> 如果使用者刪除一個案場，底下的上傳資料、清洗結果、訓練模型會怎麼處理？有沒有級聯刪除？
+
+**✅ 建議回答：**
+
+有的。`site.py` 中刪除案場的邏輯是**手動級聯刪除**，按依賴順序從最底層開始刪：
+
+```python
+# site.py — DELETE /site/{site_id}
+# 1. 先刪 TrainedModel（依賴 Upload 和 AfterData）
+# 2. 再刪 AfterData（依賴 Upload）
+# 3. 再刪 SiteData（依賴 Upload 和 Site）
+# 4. 再刪 Upload（依賴 Site）
+# 5. 最後刪 Site 本身
+```
+
+我們沒有使用 SQLAlchemy 的 `cascade="all, delete-orphan"` 自動級聯，而是手動控制，原因是：
+- 可以在每個步驟加入**檔案系統清理**（刪除模型的 `.joblib` 和 `.meta.json` 檔案）
+- 可以精確控制刪除順序，避免外鍵約束衝突
+- 出錯時可以定位到具體是哪個步驟失敗
+
+**風險：** 如果在刪除中途伺服器崩潰，可能留下孤立的記錄。改進方向是把整個流程包在一個資料庫事務（transaction）裡。
+
+---
+
+## 叁、安全與認證
+
+### Q6：為什麼沒有使用 JWT Token 認證？
+
+**🎤 評審提問：**
+
+> 你們的 API 沒有使用 JWT 或 Session Token 認證，所有需要權限的操作（如列出模型、刪除案場）都是靠前端傳遞 `user_id` 參數。這有什麼安全問題？
+
+**✅ 建議回答：**
+
+這是目前系統在安全方面最大的弱點，必須誠實承認。
+
+**現狀問題：**
+- 任何人只要知道另一個使用者的 `user_id`（通常是自增整數），就可以呼叫 API `GET /train/trained-models?user_id=3` 看到該使用者的所有模型
+- 沒有 token 驗證意味著 API 完全依賴前端的「善意」來傳正確的 `user_id`
+
+**設計如此的原因：**
+- 目前系統定位為學術展示和內部使用，安全需求較低
+- 快速開發優先，認證系統的複雜度較高
+
+**改進方向：**
+1. 引入 **JWT Token**：登入時核發，後續每個 API 在 Header 帶 `Authorization: Bearer <token>`
+2. 後端用 `Depends()` 注入當前使用者，不再信任前端傳的 `user_id`
+3. FastAPI 已有完善的 `OAuth2PasswordBearer` 支援，改動量不大
+
+---
+
+### Q7：密碼是如何加密儲存的？
+
+**🎤 評審提問：**
+
+> 說明你們的密碼加密機制，使用了什麼演算法？salt 是如何處理的？
+
+**✅ 建議回答：**
+
+我們使用 passlib 的 `SHA256_crypt` 演算法：
+
+```python
+# auth.py L17
+pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
+```
+
+**加密流程：**
+1. `pwd_context.hash(user.user_pw)` — passlib 自動生成隨機 salt 並嵌入 hash 結果
+2. 儲存到資料庫的格式類似：`$5$rounds=535000$RANDOM_SALT$HASH_VALUE`
+3. 驗證時 `pwd_context.verify(input_pw, stored_hash)` — passlib 從 hash 中提取 salt 重新計算
+
+**自評：** `sha256_crypt` 是安全的，但並非業界首選。更現代的選擇是 **bcrypt** 或 **argon2**，它們有更好的抗 GPU 暴力破解能力。passlib 的 `CryptContext` 設計允許我們未來無縫升級：只需將 `schemes=["bcrypt"]` 改掉，舊密碼在使用者下次登入時會自動遷移。
+
+---
+
+### Q8：Email 驗證的安全性
+
+**🎤 評審提問：**
+
+> 你們的 Email 驗證流程是怎麼設計的？Token 有什麼保護措施？
+
+**✅ 建議回答：**
+
+系統有兩種 Email 驗證機制：
+
+**1. 註冊驗證（Token-based）：**
+- Token 使用 `secrets.token_urlsafe(32)` 生成（32 bytes = 256 bits 的密碼學安全隨機數）
+- 有效期 **24 小時**（`auth.py L65`）
+- 驗證成功後 Token 立即清除（`user.verify_token = None`），防止重複使用
+- 如果驗證信寄送失敗，會立即刪除新建的使用者帳號（`auth.py L97`），避免產生無法驗證的死帳號
+
+**2. 忘記密碼（OTP-based）：**
+- 使用 6 位數隨機數字碼（`random.choices(string.digits, k=6)`）
+- 有效期 **10 分鐘**
+- 驗證碼通過後會標記 `reset_code_verified = True`，重設密碼後清除所有重設欄位
+
+**安全風險：**
+- 6 位 OTP 只有 100 萬種組合，理論上可以暴力猜測。改進：加入嘗試次數限制或 rate limiting
+- 驗證連結使用 HTTP 而非 HTTPS（`http://127.0.0.1:8000/...`），生產環境必須改為 HTTPS
+- SMTP 密碼存在 `.env` 中，需確保伺服器的檔案權限正確
+
+---
+
+### Q9：CORS 設定為 `allow_origins=["*"]` 的風險
+
+**🎤 評審提問：**
+
+> 你們的 CORS 設為 `allow_origins=["*"]`，所有來源都可以呼叫 API。這在部署時有什麼風險？
+
+**✅ 建議回答：**
+
+```python
+# main.py L18-24
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],       # ← 允許所有來源
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+**風險：**
+- 任何第三方網站都可以透過 JavaScript 呼叫我們的 API（CSRF 攻擊的前提條件）
+- 結合沒有 JWT 認證的問題，惡意網站可以在使用者不知情的情況下操作 API
+
+**開發階段的原因：** 前端跑在 `localhost:3000`，後端在 `localhost:8000`，開發時必須允許跨域。
+
+**部署時的改進：**
+```python
+allow_origins=["https://sunergy.example.com"]  # 只允許自家前端
+```
+
+---
+
+## 肆、資料處理與清洗
+
+### Q10：上傳資料的智能欄位辨識是怎麼做的？
+
+**🎤 評審提問：**
+
+> 你們支援多種格式的資料上傳，系統是怎麼自動辨識 CSV/XLSX 中的欄位名稱並對應到系統內部欄位的？
+
+**✅ 建議回答：**
+
+系統使用一個 `normalize()` 函式加上**關鍵字匹配**：
+
+```python
+# site.py
+def normalize(col_name):
+    return re.sub(r'[^a-z0-9]', '', col_name.strip().lower())
+```
+
+這個函式將「任何欄位名」標準化為純小寫字母+數字，然後透過多個關鍵字條件比對：
+
+```python
+for orig in df.columns:
+    n = normalize(orig)
+    if 'date' in n and 'date' not in mapped:     mapped['date'] = orig
+    if 'hour' in n and 'hour' not in mapped:     mapped['hour'] = orig
+    if n in ('gi', 'ghi', 'irr') and ...:        mapped['gi'] = orig
+    if n in ('tm', 'temp', 'mod') and ...:       mapped['tm'] = orig
+    if n in ('eac', 'power', 'gen') and ...:     mapped['eac'] = orig
+```
+
+**設計取捨：**
+- **優點**：使用者不需要手動重命名欄位，系統自動識別 `GlobalIrradiance` → `gi`、`Module_Temp` → `tm`
+- **缺點**：如果欄位名太特殊（如廠商自定義的編碼 `D414Z01_P`），可能無法識別，此時需要使用者自行改名
+- **安全措施**：如果核心欄位（date/hour/gi/tm/eac）有任何一個找不到，上傳會失敗並回傳清楚的錯誤訊息
+
+---
+
+### Q11：為什麼離群值處理用「插值替代」而非直接刪除？
+
+**🎤 評審提問：**
+
+> 你們的資料清洗流程中，偵測到的離群值不是直接刪除，而是標記為 NaN 再做線性插值。為什麼要這樣做？
+
+**✅ 建議回答：**
+
+太陽能資料的特殊性決定了這個設計：
+
+**1. 保持時間序列的連續性：** 發電資料是按小時排列的時間序列。如果直接刪除下午 2 點的異常值，資料會從 1 點直接跳到 3 點，對需要時間連續性的分析（如日趨勢圖、移動平均）會產生問題。
+
+**2. 保持每天的完整性：** 如果某天 24 小時的資料被刪了 5 小時，會影響「日總發電量」的計算。插值後仍保持 24 筆。
+
+**3. 插值方法的選擇：** 我們使用 `pandas.interpolate("linear", limit_direction="both")`：
+- `linear`：前後兩個正常值之間做線性內插，對漸變型資料（日照量隨時間變化）是合理的估計
+- `limit_direction="both"`：確保開頭和結尾的 NaN 也能被填補（前補和後補）
+
+**實際效果：** 假設下午 3 點的 GI 是異常值 9999（可能是感測器故障），相鄰的 2 點 GI=800、4 點 GI=750，插值後 3 點 GI 會被估計為 775，這是合理的近似。
+
+**程式碼位置：** `visualize.py` 的 `clean_dataframe()` 函式中：
+```python
+df[col] = df[col].interpolate(method="linear", limit_direction="both")
+```
+
+---
+
+### Q12：四種離群值偵測方法的適用場景
+
+**🎤 評審提問：**
+
+> 你們提供了 IQR、IQR Single、Z-Score 和 Isolation Forest 四種離群值偵測方法。分別適用於什麼情境？使用者該怎麼選擇？
+
+**✅ 建議回答：**
+
+| 方法 | 原理 | 適用場景 | 優點 | 缺點 |
+|------|------|---------|------|------|
+| **IQR** | 對 EAC/GI/TM 三欄各自計算 Q1-k·IQR ~ Q3+k·IQR | 通用型，適合初次清洗 | 簡單、不受極端值影響 | 假設近似對稱分布 |
+| **IQR Single** | 只對 EAC 做 IQR | 當 GI/TM 本身就有大範圍波動（如四季資料） | 保留特徵的自然變異 | 可能遺漏 GI/TM 的異常 |
+| **Z-Score** | 計算每個值偏離均值的標準差倍數，\|z\| > threshold 為離群 | 資料近似常態分布時最有效 | 可精細控制閾值 | 均值和標準差本身受極端值影響 |
+| **Isolation Forest** | 隨機選特徵和分割點，離群值更容易被「孤立」 | 多維特徵的複雜離群模式 | 無需分布假設，能捕捉多維交互離群 | contamination 參數需要先驗知識 |
+
+**建議選擇流程：**
+1. 先用 **IQR (factor=1.5)** 做初步清洗
+2. 看 `removed_ratio`：如果移除比例 >20%，可能 factor 太嚴格，調高到 2.0 或 3.0
+3. 如果資料有明確的非高斯分布特性，考慮 **Isolation Forest**
+
+---
+
+## 伍、前端架構與 UX
+
+### Q13：為什麼使用狀態驅動導航而非 React Router？
+
+**🎤 評審提問：**
+
+> 你們引入了 `react-router-dom` 作為依賴，但實際上使用 `currentPage` state 來控制頁面切換。為什麼不用標準的 URL-based routing？
+
+**✅ 建議回答：**
+
+```javascript
+// App.js — 狀態驅動導航
+const [currentPage, setCurrentPage] = useState('home');
+
+const navigate = (page) => {
+    setCurrentPage(page);
+    sessionStorage.setItem("currentPage", page);  // 持久化
+    window.scrollTo(0, 0);
+};
+```
+
+**選擇的原因：**
+
+1. **訓練流程的複雜狀態傳遞**：訓練五步驟流程（資料說明 → 上傳 → 清洗 → 訓練 → 預測）之間需要傳遞大量啟態（`afterDataId`、`selectedSite`、`cleanedFileName`），使用 props 直接傳遞比 URL params / React Context 更直覺。
+
+2. **Single-Page Application 的體驗**：所有頁面組件都在 `App.js` 中由 `currentPage` 條件渲染，切換極快（無需重新載入），使用者體驗接近原生應用。
+
+3. **登入狀態的控制**：未登入時只能看到 `PublicHome`，登入後切換到 `Dashboard`。這在狀態驅動中用 `isLoggedIn && currentPage === 'dashboard'` 就能實現。
+
+**承認的缺點：**
+- **無法分享連結**：所有頁面的 URL 都是 `localhost:3000/`，無法發送 `localhost:3000/predict` 讓他人直接進入預測頁
+- **瀏覽器前進/後退失效**：因為 URL 沒有變化，瀏覽器歷史記錄不會記錄頁面切換
+- **SEO 不友好**：但對於需要登入的內部工具系統而言，SEO 不是需求
+
+---
+
+### Q14：Session 管理策略的設計
+
+**🎤 評審提問：**
+
+> 你們同時使用了 `sessionStorage` 和 `localStorage`，各自儲存什麼？為什麼需要兩種？
+
+**✅ 建議回答：**
+
+| 儲存方式 | 儲存內容 | 生命週期 | 用途 |
+|---------|---------|---------|------|
+| **sessionStorage** | `user`（使用者資訊）、`currentPage` | 分頁關閉即失效 | 登入狀態和當前頁面 |
+| **localStorage** | `afterDataId`、`lastDataId`、`user` | 永久（除非手動清除） | 跨頁面傳遞訓練流程中的資料 ID |
+
+**為什麼需要兩種：**
+
+1. **sessionStorage 控制登入生命週期**：關閉分頁自動登出，符合安全需求。如果只用 localStorage，使用者關閉瀏覽器後再打開仍處於登入狀態，在共用電腦上有風險。
+
+2. **localStorage 用於流程資料傳遞**：訓練流程跨多個頁面組件，`afterDataId` 需要從 DataCleaning Page 傳到 ModelTraining Page。因為不用 React Router，props 傳遞需要層層轉發，localStorage 作為輕量級跨組件通訊更方便。
+
+3. **安全清除機制**（`App.js L59-64`）：
+
+```javascript
+if (!sessionUser) {
+    // 新開分頁時，強制清除 localStorage
+    localStorage.clear();
+    setIsLoggedIn(false);
+}
+```
+
+這確保用之前的 localStorage 殘留資料不會影響新的 session。
+
+---
+
+### Q15：前端的圖表渲染架構
+
+**🎤 評審提問：**
+
+> 資料清洗頁面有大量的即時圖表（散佈圖、箱型圖、直方圖），這些圖表是在前端渲染還是後端生成圖片？
+
+**✅ 建議回答：**
+
+**全部在前端渲染。** 後端只回傳原始數據，前端用 Chart.js 動態繪製。
+
+流程是：
+1. 前端呼叫 `GET /visualize-data/?upload_id=X&outlier_method=iqr&iqr_factor=1.5`
+2. 後端在 Python 中用 pandas 做清洗，回傳三個階段的 JSON 數據（原始 / GI-TM 清洗後 / 離群值處理後）
+3. 前端用 `react-chartjs-2` 接收數據並渲染
+
+**這樣設計的原因：**
+- **即時互動**：使用者調整 IQR factor 滑桿時，圖表可以即時更新（重新呼叫 API → 重渲染）
+- **減少後端負擔**：圖片渲染交給客戶端的 GPU
+- **豐富的互動體驗**：Chart.js 支援 hover tooltip、zoom、動態切換資料集，這些在靜態圖片上無法實現
+
+**用到的 Chart.js 插件：**
+- `react-chartjs-2`：React 封裝
+- `chartjs-chart-boxplot`：箱型圖擴展（Chart.js 原生不支援箱型圖）
+
+---
+
+## 陸、API 設計與錯誤處理
+
+### Q16：API 的路由命名規範
+
+**🎤 評審提問：**
+
+> 我注意到你們的預測端點放在 `/train/predict-file` 而不是 `/predict/file`。為什麼預測的 API 掛在 `train` 路由下？
+
+**✅ 建議回答：**
+
+這是因為 `predict.py` 路由器的 prefix 設為了 `/train`：
+
+```python
+# predict.py
+router = APIRouter(prefix="/train", tags=["predict"])
+```
+
+最初設計時，預測被認為是「訓練流程的延伸」（訓練完就預測），所以共用了 `/train` 前綴。
+
+**承認這不是最佳實踐。** RESTful 的標準做法應該是：
+- `/models/` — 模型管理
+- `/predictions/` — 預測操作
+- `/training/` — 訓練操作
+
+改進方式：把 `predict.py` 的 prefix 改為 `/predict`，同步更新前端的 API URL。這是一個低風險的重構。
+
+---
+
+### Q17：檔案上傳的安全處理
+
+**🎤 評審提問：**
+
+> 系統允許使用者上傳 CSV 和 XLSX 檔案。你們有做哪些安全檢查來防止惡意上傳？
+
+**✅ 建議回答：**
+
+**目前的安全檢查：**
+
+1. **副檔名驗證**（`site.py L109`）：
+```python
+if not (filename.endswith(".csv") or filename.endswith(".xlsx")):
+    raise HTTPException(status_code=400, detail="檔案格式錯誤")
+```
+
+2. **pandas 解析驗證**：如果檔案內容不是合法的 CSV/XLSX 格式，`pd.read_csv()` 或 `pd.read_excel()` 會拋出異常被 try/except 捕獲。
+
+3. **必要欄位檢查**：檔案必須包含 date、hour、gi、tm、eac 五個欄位。
+
+**未實現但應該有的安全措施：**
+
+| 檢查項目 | 風險 | 改進方式 |
+|---------|------|---------|
+| **檔案大小限制** | 使用者上傳 10GB 檔案導致記憶體耗盡 | `UploadFile` 設定 `max_size` 或用 Nginx 限制 |
+| **Content-Type 驗證** | 副檔名偽造（`.csv` 實際是執行檔） | 檢查 MIME type |
+| **CSV injection** | 惡意的 `=cmd()` 公式 | 清理開頭為 `=`, `+`, `-`, `@` 的儲存格 |
+| **路徑穿越** | 檔名含 `../../` | 使用安全的檔名清理 |
+
+---
+
+### Q18：錯誤回傳的一致性
+
+**🎤 評審提問：**
+
+> 當 API 發生錯誤時，前端是如何接收和顯示錯誤訊息的？錯誤格式有統一嗎？
+
+**✅ 建議回答：**
+
+**後端統一使用 FastAPI 的 `HTTPException`：**
+
+```python
+raise HTTPException(status_code=400, detail="此電子信箱已被註冊")
+raise HTTPException(status_code=404, detail="找不到此電子信箱")
+raise HTTPException(status_code=500, detail="scikit-learn not available on server")
+```
+
+FastAPI 自動將 `HTTPException` 轉為 JSON 格式：
+```json
+{ "detail": "此電子信箱已被註冊" }
+```
+
+**前端統一的錯誤處理模式：**
+
+```javascript
+const res = await fetch(url, options);
+const json = await res.json();
+if (!res.ok) throw new Error(json?.detail || '操作失敗');
+```
+
+前端會取出 `detail` 欄位顯示給使用者，有些頁面用 `alert()`，有些用狀態變數渲染在頁面上。
+
+**目前的問題：**
+- 中文和英文訊息混用（安全模組用中文，ML 模組用英文）
+- 沒有統一的 error code 體系（只依賴 HTTP status code + 文字描述）
+- 建議引入 error code 枚舉（如 `AUTH_001`、`TRAIN_002`）以便前端做條件處理
+
+---
+
+## 柒、部署與維運
+
+### Q19：系統的啟動與運行方式
+
+**🎤 評審提問：**
+
+> 你們的系統如何啟動？需要哪些前置條件？
+
+**✅ 建議回答：**
+
+**前置條件：**
+1. PostgreSQL 資料庫已啟動（連線字串在 `backend/.env` 中設定）
+2. Python 3.x + `pip install -r requirements.txt`
+3. Node.js + `npm install`（前端依賴）
+
+**啟動順序：**
+
+```bash
+# 終端 1：啟動後端
+cd backend
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+
+# 終端 2：啟動前端
+cd frontend
+npm start    # → localhost:3000
+```
+
+**`--reload` 的含義：** 開發模式下，修改 Python 檔案後 uvicorn 自動重啟。生產環境應移除此旗標。
+
+**生產環境的改進：**
+- 後端：使用 `gunicorn` + `uvicorn workers` 做多行程部署
+- 前端：`npm run build` 生成靜態檔案，用 Nginx 托管
+- 資料庫：使用連線池（SQLAlchemy 預設有，但參數需調整）
+- 全部用 **Docker Compose** 容器化
+
+---
+
+### Q20：如果模型訓練耗時很長怎麼辦？
+
+**🎤 評審提問：**
+
+> 模型訓練是同步 HTTP 請求，如果 XGBoost 用 Grid Search 跑 1000 組需要 30 分鐘，前端會超時。你們怎麼處理這個問題？
+
+**✅ 建議回答：**
+
+**目前的實現：** 訓練確實是同步的。前端發送 POST 請求後會一直等待，頁面顯示 loading spinner，直到後端回應。
+
+**目前能承受的原因：**
+- Bayesian 預設 30 trials，通常 1~5 分鐘完成
+- Grid Search 有 `_max_combinations` 限制（預設 100 組）
+- 太陽能資料量通常只有千筆級別，單次 fit 很快
+
+**可能出問題的場景：**
+- 使用者將 `_max_combinations` 設為 1000
+- 資料量超過萬筆
+- 同時選 3 個模型（問題放大 3 倍）
+
+**改進方案：**
+
+```mermaid
+flowchart LR
+    FE["前端"] -->|POST /train/run| API["FastAPI"]
+    API -->|加入任務| Queue["Celery + Redis"]
+    API -->|立即回傳 task_id| FE
+    Queue -->|背景執行| Worker["Celery Worker"]
+    FE -->|輪詢 GET /train/status/{task_id}| API
+    Worker -->|完成後寫入 DB| DB["PostgreSQL"]
+```
+
+核心改動：
+1. 引入 **Celery** 作為非同步任務佇列
+2. `/train/run` 改為立即回傳 `task_id`
+3. 前端改為輪詢 `GET /train/status/{task_id}` 查看進度
+4. 訓練完成後 Celery Worker 將結果寫入 DB
+
+---
+
+### Q21：系統目前有測試嗎？
+
+**🎤 評審提問：**
+
+> 系統有自動化測試嗎？如何確保程式碼品質？
+
+**✅ 建議回答：**
+
+目前系統有基礎的 **E2E (End-to-End) 測試框架**，使用 Playwright：
+
+- 測試腳本位於 `tests/` 目錄
+- 覆蓋登入、上傳、訓練、預測的基本流程
+- 使用 Chromium 自動化操作前端介面
+
+**未實現但建議有的測試：**
+
+| 測試類型 | 內容 | 工具 |
+|---------|------|------|
+| **單元測試** | 測試 `build_grid()`、`_make_range()`、`normalize()` 等工具函式 | pytest |
+| **API 整合測試** | 測試每個端點的正常和異常回應 | pytest + httpx (FastAPI TestClient) |
+| **ML 管線測試** | 用固定的小資料集驗證訓練流程的正確性 | pytest + fixture |
+| **前端組件測試** | 測試 IntervalSlider、StatusLight 等組件 | Jest + React Testing Library |
+
+---
+
+### Q22：系統的可監控性
+
+**🎤 評審提問：**
+
+> 系統在生產環境中出了問題，你們怎麼排查？有沒有日誌或監控？
+
+**✅ 建議回答：**
+
+**目前的日誌機制：**
+- `print()` 語句散布在各模組中（如 `print(f"SMTP Error: {e}")`）
+- FastAPI 自帶 Uvicorn 的存取日誌（每個 HTTP 請求的 method、path、status code）
+- 前端使用 `console.log()` 和 `console.error()` 進行 debug
+
+**未實現的改進：**
+
+| 改進項目 | 方案 |
+|---------|------|
+| **結構化日誌** | 引入 Python `logging` 模組，統一日誌格式（時間、級別、模組、訊息） |
+| **集中式日誌** | 使用 ELK Stack（Elasticsearch + Logstash + Kibana）收集和搜索日誌 |
+| **應用監控** | 引入 Prometheus + Grafana 監控 API 回應時間、記憶體使用 |
+| **錯誤追蹤** | 使用 Sentry 自動捕獲未處理的異常，含堆疊追蹤和上下文 |
+| **健康檢查** | 目前有 `GET /` 回傳健康狀態，但應增加 DB 連線和磁碟空間檢查 |
+
+---
+
+### Q23：同時多人使用的併發安全
+
+**🎤 評審提問：**
+
+> 如果兩個使用者同時訓練模型，後端的檔案儲存是否會衝突？
+
+**✅ 建議回答：**
+
+**目前的防衝突機制：**
+
+模型檔案的路徑包含**時間戳**作為唯一識別：
+
+```python
+# train.py — 檔名格式
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+filename = f"{timestamp}_{model_id}"
+# 例如: 20260422_143022_XGBoost.json
+```
+
+加上按 `after_id` 或 `upload_id` 分資料夾：
+```
+uploads/models/cleaned/{after_id}/20260422_143022_XGBoost.json
+uploads/models/cleaned/{after_id}/20260422_143025_SVR.joblib
+```
+
+**潛在風險：** 如果兩個使用者在**同一秒**、對**同一份清洗資料**、訓練**同一種模型**，會產生完全相同的檔名。
+
+**機率：** 極低（需要秒級精確的時間衝突 + 同一 after_id + 同一模型類型），但理論上存在。
+
+**改進方案：** 在檔名中加入 UUID 或使用者 ID：
+```python
+filename = f"{timestamp}_{user_id}_{model_id}_{uuid4().hex[:8]}"
+```
+
+---
+
+### Q24：減碳效益的計算邏輯
+
+**🎤 評審提問：**
+
+> Dashboard 上有減碳效益的計算，這個數字是怎麼來的？係數是否準確？
+
+**✅ 建議回答：**
+
+**計算公式：**
+```
+減碳量 (kgCO₂e) = 總發電量 (kWh) × 電力排碳係數 (0.494 kgCO₂e/kWh)
+```
+
+**後端實現**（`train.py` 的 `/dashboard-stats/{user_id}` 端點）：
+- 彙總該使用者所有 `SiteData` 的 `eac` 欄位（發電量）
+- 乘以 0.494 計算減碳量
+
+**係數來源：** 0.494 是台灣經濟部能源署公布的 2024 年**電力排放係數**。意思是每使用太陽能產出 1 kWh 的電力，就等於避免了火力發電排放 0.494 kg 的 CO₂。
+
+**前端展示**（`Dashboard.js` 中的 `CarbonReductionSection` 組件）：
+```javascript
+const carbonFactor = 0.494;
+const totalReduction = (totalGeneration * carbonFactor).toFixed(2);
+```
+
+**準確性討論：**
+- 排碳係數每年由政府更新，固定寫死 0.494 會過時。改進方式：做成可設定的環境變數
+- 目前是用「全部上傳的發電量」來計算，包含了模擬數據。嚴謹來說應該只用「經過驗證的實際發電量」
+
+---
+
+### Q25：整體系統的最大亮點與改進方向
+
+**🎤 評審提問：**
+
+> 最後一個問題。請用一句話說明你們系統最大的技術亮點，以及如果再給你們三個月，你們會優先改進什麼？
+
+**✅ 建議回答：**
+
+**最大亮點：**
+
+> 一個完整的端到端 MLOps 工作流 — 從資料上傳、視覺化清洗、多模型自動調參訓練、到多模型比對預測，所有步驟都在統一的 Web 介面中完成，且保持了完整的資料血統追蹤。
+
+**三個月優先改進的三件事：**
+
+| 優先級 | 改進項目 | 理由 |
+|--------|---------|------|
+| **🔴 P0** | **引入 JWT 認證** | 目前最大安全漏洞，任何人可冒充其他使用者 |
+| **🟡 P1** | **非同步訓練（Celery）** | 解除訓練時間對 HTTP 請求的阻塞限制 |
+| **🟢 P2** | **K-Fold 交叉驗證 + SHAP 可解釋性** | 提升模型評估的嚴謹性和結果的可解釋性 |

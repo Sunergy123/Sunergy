@@ -3,7 +3,7 @@ import Navbar from '../components/Navbar';
 
 const CarbonReductionSection = ({ totalGeneration = 2450 }) => {
   // 2024年台灣電力排碳係數假設為 0.494 kgCO₂e/kWh (請依實際需求調整)
-  const carbonFactor = 0.494; 
+  const carbonFactor = 0.494;
   const totalReduction = (totalGeneration * carbonFactor).toFixed(2);
 
   return (
@@ -27,7 +27,7 @@ const CarbonReductionSection = ({ totalGeneration = 2450 }) => {
           <span className="material-symbols-outlined text-green-400">eco</span>
           環境減碳效益
         </h3>
-        
+
         {/* C. 累積減碳量數值 */}
         <div className="text-center my-4">
           <p className="text-5xl font-black text-green-400">
@@ -108,7 +108,7 @@ const SystemIntroduction = () => (
 );
 
 export default function Dashboard({
-  
+
   onLogout,
   onNavigateToTrain,
   onNavigateToDashboard,
@@ -141,101 +141,100 @@ export default function Dashboard({
   };
 
   const fetchModels = async () => {
-      try {
-        setLoadingModels(true);
-        setModelError('');
+    try {
+      setLoadingModels(true);
+      setModelError('');
 
-        const user = JSON.parse(localStorage.getItem("user"));
+      const user = JSON.parse(localStorage.getItem("user"));
 
-        if (!user || !user.user_id) {
-          throw new Error("找不到登入資訊，請重新登入");
-        }
+      if (!user || !user.user_id) {
+        throw new Error("找不到登入資訊，請重新登入");
+      }
 
-        const userId = user.user_id;
+      const userId = user.user_id;
 
-        const res = await fetch(
-          `http://127.0.0.1:8000/train/trained-models?user_id=${userId}`
-        );
+      const res = await fetch(
+        `http://127.0.0.1:8000/train/trained-models?user_id=${userId}`
+      );
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.detail || `HTTP ${res.status}`);
-        }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP ${res.status}`);
+      }
 
-        const data = await res.json();
+      const data = await res.json();
 
-        const mapped = data.map((item) => {
-          const trainedDate = item.trained_at
-            ? new Date(item.trained_at).toLocaleDateString('zh-TW')
-            : '—';
+      const mapped = data.map((item) => {
+        const trainedDate = item.trained_at
+          ? new Date(item.trained_at).toLocaleDateString('zh-TW')
+          : '—';
 
-          const p = item.parameters || {};
+        const p = item.parameters || {};
 
-          const performance = `
+        const performance = `
           R² ${p.r2 ?? '-'} ｜ 
           RMSE ${p.rmse ?? '-'} ｜ 
           MAE ${p.mae ?? '-'} ｜ 
           WMAPE ${p.wmape ?? '-'}
           `;
 
-          return {
-            id: item.model_id,
-            name: `${item.model_type || '-'}_${item.model_id} ${
-              item.site_name && item.location
-                ? `${item.site_name}[${item.location}]`
-                : item.site_name
-                  ? `[${item.site_name}]`
-                  : '-'
+        return {
+          id: item.model_id,
+          name: `${item.model_type || '-'}_${item.model_id} ${item.site_name && item.location
+              ? `${item.site_name}[${item.location}]`
+              : item.site_name
+                ? `[${item.site_name}]`
+                : '-'
             }`.trim(),
-            type: item.model_type || '-',
-            date: trainedDate,
-            status: '已建立',
-            usage: item.usage_count ?? 0,
-            acc: item.parameters?.r2 ?? '—',
-            fileName: item.file_name || '未知檔案',
-            r2: item.r2,
-            wmape: item.wmape,
-            rmse: item.rmse,
-            mae: item.mae,
-            dataId: item.data_id,
-            filePath: item.file_path,
-            parameters: item.parameters || {},
-          };
-        });
+          type: item.model_type || '-',
+          date: trainedDate,
+          status: '已建立',
+          usage: item.usage_count ?? 0,
+          acc: item.parameters?.r2 ?? '—',
+          fileName: item.file_name || '未知檔案',
+          r2: item.r2,
+          wmape: item.wmape,
+          rmse: item.rmse,
+          mae: item.mae,
+          dataId: item.data_id,
+          filePath: item.file_path,
+          parameters: item.parameters || {},
+        };
+      });
 
-        setAllModels(mapped);
-      } catch (err) {
-        console.error('讀取模型失敗:', err);
-        setModelError(err.message || '模型資料載入失敗');
-      } finally {
-        setLoadingModels(false);
-      }
-    };
+      setAllModels(mapped);
+    } catch (err) {
+      console.error('讀取模型失敗:', err);
+      setModelError(err.message || '模型資料載入失敗');
+    } finally {
+      setLoadingModels(false);
+    }
+  };
 
   useEffect(() => {
     fetchModels();
   }, []);
-  
+
   // 在原本的 fetchModels(); 下方新增以下區塊
   useEffect(() => {
-  const fetchDashboardStats = async () => {
-    try {
-      const user = JSON.parse(localStorage.getItem("user"));
-      if (!user?.user_id) return;
+    const fetchDashboardStats = async () => {
+      try {
+        const user = JSON.parse(localStorage.getItem("user"));
+        if (!user?.user_id) return;
 
-      // 呼叫你在 train.py 新增的端點
-      const res = await fetch(`http://127.0.0.1:8000/train/dashboard-stats/${user.user_id}`);
-      if (!res.ok) throw new Error("統計資料抓取失敗");
-      
-      const data = await res.json();
-      setStats(data); // ⭐ 將後端計算的結果存入 State
-    } catch (err) {
-      console.error('讀取統計失敗:', err);
-    }
-  };
+        // 呼叫你在 train.py 新增的端點
+        const res = await fetch(`http://127.0.0.1:8000/train/dashboard-stats/${user.user_id}`);
+        if (!res.ok) throw new Error("統計資料抓取失敗");
 
-  fetchDashboardStats();
-}, []); // 僅在頁面載入時執行一次
+        const data = await res.json();
+        setStats(data); // ⭐ 將後端計算的結果存入 State
+      } catch (err) {
+        console.error('讀取統計失敗:', err);
+      }
+    };
+
+    fetchDashboardStats();
+  }, []); // 僅在頁面載入時執行一次
 
   const filteredModels = allModels.filter((model) =>
     model.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -332,7 +331,7 @@ export default function Dashboard({
 
           {/* --- Dashboard.js 右側欄位 (lg:col-span-5) --- */}
           <div className="lg:col-span-5 flex flex-col gap-8">
-            
+
             {/* 使用新封裝的減碳效益區塊，取代舊的兩個卡片 */}
             <CarbonReductionSection totalGeneration={stats.total_kwh} />
 
@@ -355,9 +354,8 @@ export default function Dashboard({
                     >
                       <div className="flex items-center gap-5">
                         <div
-                          className={`text-2xl font-black italic ${
-                            index === 0 ? 'text-primary' : 'text-white/20'
-                          }`}
+                          className={`text-2xl font-black italic ${index === 0 ? 'text-primary' : 'text-white/20'
+                            }`}
                         >
                           0{index + 1}
                         </div>

@@ -1,0 +1,572 @@
+# Sunergy（日光預）— 項目技術詳細分析
+
+## 一、項目概述
+
+**Sunergy（日光預）** 是一套完整的 **太陽能發電量預測平台**，整合了資料管理、資料清洗、機器學習模型訓練及發電量預測等功能。系統以 **前後端分離架構** 構建，響應 SDGs 7（可負擔的潔淨能源）永續發展目標，透過精準預測優化太陽能發電效率。
+
+---
+
+## 二、系統架構
+
+```mermaid
+graph TB
+    subgraph Frontend["前端 (React + TailwindCSS)"]
+        A[PublicHome 公開首頁] --> B[LoginModal / RegisterModal]
+        B --> C[Dashboard 儀表板]
+        C --> D[訓練流程 5 步驟]
+        C --> E[PredictSolar 預測發電量]
+        C --> F[Sites 案場管理]
+        C --> G[ModelManagement 模型管理]
+        
+        D --> D1["1. DataVariableGuide 變數說明"]
+        D --> D2["2. StartPredict 上傳資料"]
+        D --> D3["3. DataCleaning 資料清洗"]
+        D --> D4["4. ModelTraining 模型訓練"]
+    end
+    
+    subgraph Backend["後端 (FastAPI + Python)"]
+        H[main.py FastAPI App]
+        H --> I[auth.py 身份驗證]
+        H --> J[site.py 案場管理]
+        H --> K[visualize.py 資料視覺化/清洗]
+        H --> L[train.py 模型訓練]
+        H --> M[predict.py 預測引擎]
+        L --> N[train_utils.py 訓練工具]
+    end
+    
+    subgraph DB["資料庫 (PostgreSQL)"]
+        O[(User)]
+        P[(Site)]
+        Q[(Upload)]
+        R[(SiteData)]
+        S[(AfterData)]
+        T[(TrainedModel)]
+    end
+    
+    Frontend -->|HTTP REST API| Backend
+    Backend -->|SQLAlchemy ORM| DB
+```
+
+---
+
+## 三、技術棧
+
+### 3.1 前端技術
+
+| 技術 | 版本 | 用途 |
+|------|------|------|
+| **React** | 19.2.0 | UI 框架 (Create React App) |
+| **TailwindCSS** | 3.4.18 | CSS 工具類框架 |
+| **React Router DOM** | 7.10.1 | 路由管理（但實際使用狀態驅動導航） |
+| **Chart.js + react-chartjs-2** | 4.5.1 / 5.3.1 | 資料視覺化圖表 |
+| **chartjs-chart-boxplot** | 4.4.5 | 箱型圖擴展 |
+| **xlsx** | 0.18.5 | 前端讀取 Excel 檔 |
+| **jsPDF + html2canvas** | 4.2.1 / 1.4.1 | PDF 報告匯出 |
+| **file-saver** | 2.0.5 | 前端檔案下載 |
+
+> [!NOTE]
+> 前端使用**狀態驅動導航**（`currentPage` state），而非傳統 URL-based routing，透過 `sessionStorage` 持久化頁面狀態。
+
+### 3.2 後端技術
+
+| 技術 | 用途 |
+|------|------|
+| **FastAPI** | 非同步 Web 框架 |
+| **Uvicorn** | ASGI 伺服器 |
+| **SQLAlchemy** | ORM 資料庫存取 |
+| **psycopg2-binary** | PostgreSQL 驅動 |
+| **Pydantic** | 資料驗證 (含 Email 驗證) |
+| **pandas / numpy** | 資料處理與運算 |
+| **scikit-learn** | ML 模型 (SVR, RandomForest) |
+| **XGBoost** | 梯度提升樹模型 |
+| **Optuna** | 貝葉斯超參數優化 |
+| **joblib** | 模型序列化 |
+| **passlib (SHA256)** | 密碼加密 |
+| **python-dotenv** | 環境變數管理 |
+| **openpyxl** | 後端 Excel 讀取 |
+
+### 3.3 資料庫
+
+- **PostgreSQL** (`postgresql://postgres:123456@localhost:5432/solar`)
+- SQLAlchemy ORM + 自動建表 (`Base.metadata.create_all`)
+
+---
+
+## 四、資料庫設計
+
+```mermaid
+erDiagram
+    User ||--o{ Site : "owns"
+    Site ||--o{ Upload : "has"
+    Site ||--o{ SiteData : "has"
+    Upload ||--o{ SiteData : "contains"
+    Upload ||--o{ AfterData : "produces"
+    AfterData }o--o{ TrainedModel : "trains"
+    Upload }o--o{ TrainedModel : "trains"
+    
+    User {
+        int user_id PK
+        string user_name
+        string user_account UK
+        string user_pw
+        bool email_verified
+        string verify_token
+        datetime verify_token_expires_at
+        string reset_code
+        datetime reset_code_expires_at
+        bool reset_code_verified
+        datetime created_at
+    }
+    
+    Site {
+        int site_id PK
+        string site_code
+        string site_name
+        string location
+        int user_id FK
+        datetime created_at
+    }
+    
+    Upload {
+        int upload_id PK
+        int site_id FK
+        string file_name
+        datetime upload_time
+    }
+    
+    SiteData {
+        int data_id PK
+        int site_id FK
+        int upload_id FK
+        date the_date
+        int the_hour
+        float gi
+        float tm
+        float eac
+        string data_name
+    }
+    
+    AfterData {
+        int after_id PK
+        int site_id FK
+        int upload_id FK
+        string after_name
+        int before_rows
+        int after_rows
+        float removed_ratio
+        string outlier_method
+        bool gi_tm_applied
+        jsonb outlier_params
+        string file_path
+    }
+    
+    TrainedModel {
+        int model_id PK
+        int upload_id FK
+        int after_id FK
+        string model_type
+        jsonb parameters
+        string file_path
+        datetime trained_at
+        int usage_count
+        float rmse
+        float r2
+        float mae
+        float wmape
+        jsonb metrics
+    }
+```
+
+> [!IMPORTANT]
+> `TrainedModel` 表有一個 **CHECK constraint** `check_data_source`，確保每個模型要嘛關聯到原始資料 (`upload_id`)，要嘛關聯到清洗後資料 (`after_id`)，但不能同時存在，實現了嚴格的**資料來源追蹤 (Data Lineage)**。
+
+### 核心資料欄位說明
+
+| 欄位 | 全名 | 說明 |
+|------|------|------|
+| **GI** | Global Irradiance | 全域日照量 (W/m²) |
+| **TM** | Module Temperature | 模組溫度 (°C) |
+| **EAC** | Energy AC | 交流發電量 (kWh)，為預測目標 |
+
+---
+
+## 五、後端 API 與核心邏輯
+
+### 5.1 身份驗證模組 ([auth.py](file:///c:/sunergy/backend/routers/auth.py))
+
+| 端點 | 方法 | 功能 |
+|------|------|------|
+| `/auth/register` | POST | 使用者註冊 + Email 驗證信 |
+| `/auth/verify-email` | GET | Email 驗證（Token-based，24 小時有效） |
+| `/auth/login` | POST | 帳號密碼登入 |
+| `/auth/forgot-password/send-code` | POST | 發送 6 位數重設密碼驗證碼 |
+| `/auth/forgot-password/verify-code` | POST | 驗證重設碼 |
+| `/auth/forgot-password/reset` | POST | 重設密碼 |
+| `/auth/change-password` | POST | 修改密碼 |
+
+**技術細節：**
+- 密碼加密：`SHA256_crypt` (passlib)
+- Email 驗證：Token-based，使用 `secrets.token_urlsafe(32)`
+- 忘記密碼：6 位 OTP，有效期 10 分鐘
+- SMTP：Gmail SMTP + TLS 加密
+
+---
+
+### 5.2 案場管理模組 ([site.py](file:///c:/sunergy/backend/routers/site.py))
+
+| 端點 | 方法 | 功能 |
+|------|------|------|
+| `/site/list` | GET | 列出使用者的所有案場 |
+| `/site/create` | POST | 建立新案場 |
+| `/site/upload-data` | POST | 上傳發電資料 (CSV/XLSX) |
+| `/site/{site_id}` | PUT | 更新案場資訊 |
+| `/site/{site_id}` | DELETE | 刪除案場 (級聯刪除所有關聯資料) |
+
+**資料上傳流程：**
+
+```mermaid
+flowchart LR
+    A["上傳 .csv/.xlsx"] --> B["自動欄位辨識"]
+    B --> C["智能欄位映射<br/>(normalize + keyword)"]
+    C --> D["日期格式轉換"]
+    D --> E["小時格式安全解析"]
+    E --> F["批量寫入 DB"]
+    F --> G["回傳原始欄位 + 系統欄位"]
+```
+
+**欄位智能辨識機制：**
+- 使用 `normalize()` 函式將欄位名轉為小寫並移除特殊字元
+- 透過關鍵字匹配 (`date`, `hour`, `gi`, `tm`, `eac`) 自動映射到系統內部欄位
+- 支援不同格式的小時欄位（整數 `8`、字串 `8:00`）
+
+---
+
+### 5.3 資料清洗與視覺化模組 ([visualize.py](file:///c:/sunergy/backend/routers/visualize.py))
+
+| 端點 | 方法 | 功能 |
+|------|------|------|
+| `/visualize-data/` | GET | 取得資料三階段視覺化結果 |
+| `/save-cleaned-data/` | POST | 儲存清洗後資料為 CSV + 寫入 AfterData |
+
+**兩階段資料清洗流程：**
+
+```mermaid
+flowchart TB
+    Raw["原始資料 (Stage 0)"] --> S1["Stage 1: GI/TM 基礎清洗"]
+    S1 --> S2["Stage 2: 離群值處理"]
+    S2 --> Final["清洗後資料"]
+    
+    S1 --> |"GI > 0 過濾"| S1a["移除日照量 ≤ 0 的數據"]
+    S1 --> |"TM 修復"| S1b["fix_tm(): 負值→NaN→線性插值"]
+
+    S2 --> |"IQR"| S2a["Q1-k·IQR ~ Q3+k·IQR"]
+    S2 --> |"Z-Score"| S2b["|z| > threshold"]
+    S2 --> |"Isolation Forest"| S2c["contamination 參數"]
+    S2 --> |"IQR Single"| S2d["僅對 EAC 做 IQR"]
+```
+
+**離群值處理策略（4 種方法）：**
+
+| 方法 | 參數 | 說明 |
+|------|------|------|
+| `iqr` | `iqr_factor` (預設 1.5) | 對 EAC/GI/TM 三欄做 IQR |
+| `iqr_single` | `iqr_factor` | 僅對 EAC 做 IQR |
+| `zscore` | `z_threshold` (預設 3.0) | Z-Score 離群值偵測 |
+| `isolation_forest` | `contamination` (預設 0.1) | 孤立森林無監督偵測 |
+
+**離群值替代策略：NaN + 線性插值** — 將偵測到的離群值標記為 NaN，然後使用 `interpolate("linear", limit_direction="both")` 進行雙向插值修復。
+
+**視覺化輸出資料：**
+- **散布矩陣** (Scatter Matrix)：EAC/GI/TM 兩兩配對
+- **箱型圖** (Boxplot)：按月份、日期、小時分組的 EAC 分布
+- **相關性熱力圖** (Correlation Heatmap)：含基本三變數與擴展六變數兩種
+- **直方圖** (Histogram)：各變數的分布情形
+
+---
+
+### 5.4 模型訓練模組 ([train.py](file:///c:/sunergy/backend/routers/train.py))
+
+| 端點 | 方法 | 功能 |
+|------|------|------|
+| `/train/run` | POST | 執行模型訓練 |
+| `/train/info` | GET | 查詢資料集資訊 |
+| `/train/models` | GET | 列出模型檔案 |
+| `/train/trained-models` | GET | 列出使用者的已訓練模型 |
+| `/train/trained-models/{model_id}` | DELETE | 刪除單一模型 |
+| `/train/trained-models/batch-delete` | POST | 批量刪除模型 |
+| `/train/dashboard-stats/{user_id}` | GET | 取得減碳效益統計 |
+| `/train/download` | GET | 下載清洗後的 CSV |
+
+**支援的機器學習模型：**
+
+| 模型 | 實現 | 關鍵超參數 |
+|------|------|------------|
+| **SVR** | `sklearn.svm.SVR` + `StandardScaler` Pipeline | C, kernel, gamma, epsilon |
+| **RandomForest** | `sklearn.ensemble.RandomForestRegressor` | n_estimators, max_depth |
+| **XGBoost** | `xgboost.XGBRegressor` | n_estimators, learning_rate, max_depth, subsample, colsample_bytree, min_child_weight, reg_lambda, reg_alpha |
+
+**超參數搜索策略：**
+
+| 策略 | 說明 |
+|------|------|
+| **Grid Search** | 窮舉所有超參數組合（支援 `_max_combinations` 限制） |
+| **Bayesian (Optuna)** | 使用 Optuna 的 TPE 採樣器，最小化 WMAPE，預設 30 trials |
+
+**模型評估指標：**
+- **R² (決定係數)**：模型解釋力
+- **RMSE (均方根誤差)**：預測偏差
+- **MAE (平均絕對誤差)**：平均偏差
+- **WMAPE (加權平均絕對百分比誤差)**：核心選模指標
+
+**資料分割方式：**
+
+| 方式 | 說明 |
+|------|------|
+| `random` | 隨機分割 (預設 80/20) |
+| `time` | 時間序列分割（前 N% 訓練，後 M% 測試） |
+
+**模型持久化：**
+- **XGBoost** → `.json` (原生格式) 或 `.joblib` (備用)
+- **SVR / RandomForest** → `.joblib` (joblib 序列化)
+- 每個模型附帶 `.meta.json` sidecar 檔案，記錄特徵欄位、目標欄位、分割方式等元資訊
+
+**減碳效益計算：**
+```
+減碳量 (kgCO₂e) = 總發電量 (kWh) × 電力排碳係數 (0.494)
+```
+
+---
+
+### 5.5 預測模組 ([predict.py](file:///c:/sunergy/backend/routers/predict.py))
+
+| 端點 | 方法 | 功能 |
+|------|------|------|
+| `/train/predict` | POST | JSON 資料預測 |
+| `/train/predict-file` | POST | 上傳檔案單模型預測 |
+| `/train/predict-file-multi` | POST | 上傳檔案多模型比對預測 |
+
+**預測流程：**
+
+```mermaid
+flowchart LR
+    A["上傳預測檔案<br/>(CSV/XLSX)"] --> B["自動衍生時間特徵<br/>(hour, month, etc.)"]
+    B --> C["欄位別名映射"]
+    C --> D["載入模型檔案<br/>(.json/.joblib)"]
+    D --> E["執行預測"]
+    E --> F["計算每筆誤差率"]
+    F --> G["回傳預測結果 +<br/>統計摘要"]
+```
+
+**多模型比對預測特色：**
+- 支援同時選多個模型執行預測
+- 回傳每個模型的預測欄位 (`pred_ModelType_ModelID`) 和誤差欄位 (`err_ModelType_ModelID`)
+- 提供每個模型的 `total_predicted_eac` 和 `avg_error_pct` 彙總
+
+---
+
+## 六、前端頁面架構
+
+### 6.1 頁面導航流程
+
+```mermaid
+flowchart TB
+    Home["PublicHome<br/>公開首頁"] -->|登入| Dashboard["Dashboard<br/>登入後首頁"]
+    Home -->|使用教學| UserGuide["UserGuide<br/>使用說明"]
+    
+    Dashboard --> Train["訓練流程"]
+    Dashboard --> Predict["PredictSolar<br/>預測發電量"]
+    Dashboard --> Sites["Sites<br/>案場管理"]
+    Dashboard --> ModelMgmt["ModelManagement<br/>模型管理"]
+    
+    Train --> T1["DataVariableGuide<br/>①變數說明"]
+    T1 --> T2["StartPredict<br/>②上傳資料"]
+    T2 --> T3["DataCleaning<br/>③資料清洗"]
+    T3 --> T4["ModelTraining<br/>④訓練模型"]
+    T4 --> Predict
+```
+
+### 6.2 各頁面功能
+
+| 頁面 | 檔案 | 功能說明 |
+|------|------|---------|
+| **PublicHome** | [PublicHome.js](file:///c:/sunergy/frontend/src/pages/PublicHome.js) | 公開首頁，提供登入入口與使用者教學連結 |
+| **Dashboard** | [Dashboard.js](file:///c:/sunergy/frontend/src/pages/Dashboard.js) | 儀表板：系統介紹、已建立模型列表、減碳效益統計、最常用模型排名 |
+| **DataVariableGuide** | [DataVariableGuide.js](file:///c:/sunergy/frontend/src/pages/DataVariableGuide.js) | 資料欄位變數說明頁 |
+| **StartPredict** | [StartPredict.js](file:///c:/sunergy/frontend/src/pages/StartPredict.js) | 選擇案場 + 上傳資料檔案 |
+| **DataCleaning** | [DataCleaning.js](file:///c:/sunergy/frontend/src/pages/DataCleaning.js) | 互動式資料清洗：選擇離群值方法/參數、即時預覽圖表、儲存清洗結果 |
+| **ModelTraining** | [ModelTraining.js](file:///c:/sunergy/frontend/src/pages/ModelTraining.js) | 選擇模型、配置超參數、執行訓練、查看結果 |
+| **PredictSolar** | [PredictSolar.js](file:///c:/sunergy/frontend/src/pages/PredictSolar.js) | 選擇模型 → 上傳預測檔案 → 查看預測結果（支援多模型比較） |
+| **Sites** | [Sites.js](file:///c:/sunergy/frontend/src/pages/Sites.js) | 案場 CRUD 管理 |
+| **ModelManagement** | [ModelManagement.js](file:///c:/sunergy/frontend/src/pages/ModelManagement.js) | 模型管理（列表、刪除、批量刪除） |
+| **UserGuide** | [UserGuide.js](file:///c:/sunergy/frontend/src/pages/UserGuide.js) | 系統使用教學 |
+
+### 6.3 組件
+
+| 組件 | 檔案 | 功能 |
+|------|------|------|
+| **Navbar** | [Navbar.js](file:///c:/sunergy/frontend/src/components/Navbar.js) | 頂部導航列，含頁面高亮邏輯 |
+| **LoginModal** | [LoginModal.js](file:///c:/sunergy/frontend/src/components/LoginModal.js) | 登入彈窗 |
+| **RegisterModal** | [RegisterModal.js](file:///c:/sunergy/frontend/src/components/RegisterModal.js) | 註冊彈窗 |
+| **CreateSiteModal** | [CreateSiteModal.js](file:///c:/sunergy/frontend/src/components/CreateSiteModal.js) | 建立案場彈窗 |
+| **EditSiteModal** | [EditSiteModal.js](file:///c:/sunergy/frontend/src/components/EditSiteModal.js) | 編輯案場彈窗 |
+| **ChangePasswordModal** | [ChangePasswordModal.js](file:///c:/sunergy/frontend/src/components/ChangePasswordModal.js) | 修改密碼彈窗 |
+| **ForgotPasswordModal** | [ForgotPasswordModal.js](file:///c:/sunergy/frontend/src/components/ForgotPasswordModal.js) | 忘記密碼流程（三步驟） |
+
+---
+
+## 七、設計特色
+
+### 7.1 Session 管理策略
+- **登入狀態**：`sessionStorage` 儲存使用者資訊，關閉分頁即失效
+- **頁面狀態**：`sessionStorage` 追蹤 `currentPage`，重新整理後保留頁面
+- **安全清除**：新開分頁時清除 `localStorage`，防止跨 session 狀態污染
+
+### 7.2 資料安全
+- **前端**：密碼以明文傳送（透過 HTTPS 保護）
+- **後端**：`passlib` SHA256 雜湊儲存
+- **權限控制**：模型操作（刪除、列表）僅限模型所屬使用者
+- **CORS**：目前為 `allow_origins=["*"]`（開發模式）
+
+### 7.3 前端 UI 設計
+- **主題**：深色模式 (`#121212` 背景 + `#f2cc0d` 主色調)
+- **風格**：Glassmorphism 半透明卡片 (`bg-white/[0.03]`)
+- **動畫**：自定義 Tailwind 動畫 (sunRise, fadeInUp, bounceOnce)
+- **字體**：Inter + Noto Sans TC
+
+### 7.4 模型管理
+- 模型使用次數追蹤 (`usage_count`)
+- 完整的資料血統 (Data Lineage)：Upload → AfterData → TrainedModel
+- 支援模型檔案 + 元資訊 (.meta.json) 雙檔管理
+
+---
+
+## 八、端到端工作流程
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant FE as Frontend
+    participant BE as Backend
+    participant DB as PostgreSQL
+    participant FS as File System
+
+    User->>FE: 1. 註冊 / 登入
+    FE->>BE: POST /auth/register or /auth/login
+    BE->>DB: 查詢/寫入 User
+    BE-->>FE: 回傳 user_id
+
+    User->>FE: 2. 建立案場
+    FE->>BE: POST /site/create
+    BE->>DB: 寫入 Site
+
+    User->>FE: 3. 上傳資料 (CSV/XLSX)
+    FE->>BE: POST /site/upload-data
+    BE->>DB: 寫入 Upload + SiteData
+
+    User->>FE: 4. 資料清洗 (選擇方法/參數)
+    FE->>BE: GET /visualize-data/ (預覽)
+    BE-->>FE: 三階段圖表資料
+    FE->>BE: POST /save-cleaned-data/ (儲存)
+    BE->>FS: 匯出 CSV
+    BE->>DB: 寫入 AfterData
+
+    User->>FE: 5. 模型訓練 (選擇模型/超參數)
+    FE->>BE: POST /train/run
+    BE->>BE: Grid/Bayes 搜索 + 訓練
+    BE->>FS: 儲存 .joblib/.json + .meta.json
+    BE->>DB: 寫入 TrainedModel
+    BE-->>FE: 回傳訓練結果 + 指標
+
+    User->>FE: 6. 預測發電量
+    FE->>BE: POST /train/predict-file-multi
+    BE->>FS: 載入模型
+    BE->>BE: 執行預測
+    BE-->>FE: 回傳預測值 + 誤差率
+```
+
+---
+
+## 九、檔案系統結構
+
+```
+c:\sunergy\
+├── backend\
+│   ├── .env                    # 環境變數 (DB URL, SMTP)
+│   ├── main.py                 # FastAPI 入口
+│   ├── database.py             # SQLAlchemy 配置
+│   ├── models.py               # ORM 模型定義 (6 張表)
+│   ├── schemas.py              # Pydantic 請求驗證
+│   ├── requirements.txt        # Python 依賴
+│   ├── routers/
+│   │   ├── auth.py             # 身份驗證 (7 端點)
+│   │   ├── site.py             # 案場管理 (5 端點)
+│   │   ├── visualize.py        # 資料清洗/視覺化 (2 端點)
+│   │   ├── train.py            # 模型訓練/管理 (8 端點)
+│   │   ├── predict.py          # 預測 (3 端點)
+│   │   └── train_utils.py      # 共用工具函式
+│   ├── processed_data/         # 清洗後 CSV 儲存
+│   └── uploads/
+│       └── models/             # 模型檔案儲存
+│
+└── frontend\
+    ├── package.json
+    ├── tailwind.config.js       # TailwindCSS 配置 (主題/動畫)
+    └── src/
+        ├── App.js               # 主應用 + 路由邏輯
+        ├── index.js             # React 入口
+        ├── components/          # 可複用組件 (7 個)
+        │   ├── Navbar.js
+        │   ├── LoginModal.js
+        │   ├── RegisterModal.js
+        │   ├── CreateSiteModal.js
+        │   ├── EditSiteModal.js
+        │   ├── ChangePasswordModal.js
+        │   └── ForgotPasswordModal.js
+        └── pages/               # 頁面組件 (10 個)
+            ├── PublicHome.js
+            ├── Dashboard.js
+            ├── DataVariableGuide.js
+            ├── StartPredict.js
+            ├── DataCleaning.js
+            ├── ModelTraining.js
+            ├── PredictSolar.js
+            ├── Sites.js
+            ├── ModelManagement.js
+            └── UserGuide.js
+```
+
+---
+
+## 十、API 端點完整清單
+
+共計 **25 個 API 端點**：
+
+| 模組 | 端點 | 方法 | 說明 |
+|------|------|------|------|
+| Root | `/` | GET | 健康檢查 |
+| Auth | `/auth/register` | POST | 使用者註冊 |
+| Auth | `/auth/verify-email` | GET | Email 驗證 |
+| Auth | `/auth/login` | POST | 登入 |
+| Auth | `/auth/forgot-password/send-code` | POST | 發送重設碼 |
+| Auth | `/auth/forgot-password/verify-code` | POST | 驗證重設碼 |
+| Auth | `/auth/forgot-password/reset` | POST | 重設密碼 |
+| Auth | `/auth/change-password` | POST | 修改密碼 |
+| Site | `/site/list` | GET | 列出案場 |
+| Site | `/site/create` | POST | 建立案場 |
+| Site | `/site/upload-data` | POST | 上傳資料 |
+| Site | `/site/{site_id}` | PUT | 更新案場 |
+| Site | `/site/{site_id}` | DELETE | 刪除案場 |
+| Visualize | `/visualize-data/` | GET | 資料視覺化 |
+| Visualize | `/save-cleaned-data/` | POST | 儲存清洗資料 |
+| Train | `/train/debug` | GET | 模組可用性檢查 |
+| Train | `/train/info` | GET | 資料集資訊 |
+| Train | `/train/models` | GET | 模型檔案列表 |
+| Train | `/train/run` | POST | 執行訓練 |
+| Train | `/train/trained-models` | GET | 已訓練模型列表 |
+| Train | `/train/trained-models/{model_id}` | DELETE | 刪除模型 |
+| Train | `/train/trained-models/batch-delete` | POST | 批量刪除 |
+| Train | `/train/dashboard-stats/{user_id}` | GET | 減碳統計 |
+| Train | `/train/download` | GET | 下載清洗 CSV |
+| Predict | `/train/predict` | POST | JSON 預測 |
+| Predict | `/train/predict-file` | POST | 檔案單模型預測 |
+| Predict | `/train/predict-file-multi` | POST | 檔案多模型預測 |

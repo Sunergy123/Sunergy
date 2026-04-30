@@ -7,23 +7,25 @@ import { saveAs } from 'file-saver';
 /* ── 誤差燈號組件 ── */
 const ErrorLight = ({ pct }) => {
   if (pct === null || pct === undefined) return <span className="text-white/20 text-sm">—</span>;
-  const v = Number(pct);
+  const raw = Number(pct);
+  const v = Math.abs(raw);
+  const prefix = raw > 0 ? '+' : '';
   if (v <= 5) return (
     <span className="inline-flex items-center gap-1.5">
       <span className="size-3 rounded-full bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.5)]" />
-      <span className="text-green-400 text-sm font-mono">{v.toFixed(1)}%</span>
+      <span className="text-green-400 text-sm font-mono">{prefix}{raw.toFixed(1)}%</span>
     </span>
   );
   if (v <= 15) return (
     <span className="inline-flex items-center gap-1.5">
       <span className="size-3 rounded-full bg-yellow-400 shadow-[0_0_6px_rgba(234,179,8,0.5)]" />
-      <span className="text-yellow-400 text-sm font-mono">{v.toFixed(1)}%</span>
+      <span className="text-yellow-400 text-sm font-mono">{prefix}{raw.toFixed(1)}%</span>
     </span>
   );
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className="size-3 rounded-full bg-red-400 shadow-[0_0_6px_rgba(239,68,68,0.5)] animate-pulse" />
-      <span className="text-red-400 text-sm font-mono">{v.toFixed(1)}%</span>
+      <span className="text-red-400 text-sm font-mono">{prefix}{raw.toFixed(1)}%</span>
     </span>
   );
 };
@@ -69,7 +71,7 @@ const SortIcon = ({ direction }) => {
 /* ── 取得燈號顏色 hex ── */
 const getErrorColor = (pct) => {
   if (pct === null || pct === undefined) return null;
-  const v = Number(pct);
+  const v = Math.abs(Number(pct));
   if (isNaN(v)) return null;
   if (v <= 5) return { bg: 'C6EFCE', fg: '006100' };   // 綠
   if (v <= 15) return { bg: 'FFEB9C', fg: '9C6500' };  // 黃
@@ -353,7 +355,7 @@ export default function PredictSolar({
       if (result.mode === 'single') {
         const ep = row.error_pct;
         if (ep !== null && ep !== undefined) {
-          const v = Number(ep);
+          const v = Math.abs(Number(ep));
           rowArr.push(v <= 5 ? '正常' : v <= 15 ? '留意' : '異常');
         } else {
           rowArr.push('');
@@ -807,8 +809,9 @@ export default function PredictSolar({
                         pagedRows.map((row, idx) => {
                           const globalIdx = page * PAGE_SIZE + idx;
                           const singleErrPct = result.mode === 'single' ? row.error_pct : null;
-                          const rowBg = singleErrPct !== null && singleErrPct !== undefined
-                            ? (singleErrPct > 15 ? 'bg-red-500/[0.03]' : singleErrPct > 5 ? 'bg-yellow-500/[0.02]' : '')
+                          const absErrPct = singleErrPct !== null && singleErrPct !== undefined ? Math.abs(singleErrPct) : null;
+                          const rowBg = absErrPct !== null
+                            ? (absErrPct > 15 ? 'bg-red-500/[0.03]' : absErrPct > 5 ? 'bg-yellow-500/[0.02]' : '')
                             : '';
                           return (
                             <tr key={globalIdx} className={`hover:bg-white/[0.03] transition-colors ${rowBg}`}>

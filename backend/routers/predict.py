@@ -85,6 +85,9 @@ def predict(payload: PredictRequest, db: Session = Depends(get_db)):
         model = _joblib.load(artifact_path)
         y_pred = model.predict(X)
 
+    # 發電量不可能為負數，將負值截斷為 0
+    y_pred = np.maximum(y_pred, 0)
+
     if payload.model_id:
         tm = db.query(TrainedModel).filter(
             TrainedModel.model_id == payload.model_id
@@ -202,6 +205,9 @@ async def predict_file(
         model = _joblib.load(artifact_path)
         y_pred = model.predict(X)
 
+    # 發電量不可能為負數，將負值截斷為 0
+    y_pred = np.maximum(y_pred, 0)
+
     # 6. build response: every row from uploaded file + predicted_EAC + error %
     actual_eac = df[target_col].values if target_col in df.columns else None
     rows_out = []
@@ -212,7 +218,7 @@ async def predict_file(
         if actual_eac is not None and pred_val is not None:
             act = float(actual_eac[i]) if not pd.isna(actual_eac[i]) else None
             if act is not None and act != 0:
-                r["error_pct"] = round(abs(pred_val - act) / abs(act) * 100, 2)
+                r["error_pct"] = round((pred_val - act) / abs(act) * 100, 2)
             elif act == 0 and pred_val == 0:
                 r["error_pct"] = 0.0
             else:
@@ -223,7 +229,7 @@ async def predict_file(
 
     # summary stats
     errors = [r["error_pct"] for r in rows_out if r["error_pct"] is not None]
-    avg_error = round(sum(errors) / len(errors), 2) if errors else None
+    avg_error = round(sum(abs(e) for e in errors) / len(errors), 2) if errors else None
     total_pred = round(sum(r["predicted_EAC"] for r in rows_out if r["predicted_EAC"] is not None), 2)
 
     # Remove time-derived columns from output (they are internal features only)
@@ -257,7 +263,7 @@ def _predict_with_model(artifact_path: Path, meta: dict, X: np.ndarray):
             raise HTTPException(status_code=500, detail="xgboost not available")
         booster = xgb.XGBRegressor()
         booster.load_model(str(artifact_path))
-        return booster.predict(X)
+        y_pred = booster.predict(X)
 
     elif artifact_path.suffix == ".pt":
         raise HTTPException(status_code=400, detail="LSTM models (.pt) are no longer supported")
@@ -265,7 +271,10 @@ def _predict_with_model(artifact_path: Path, meta: dict, X: np.ndarray):
     else:
         import joblib as _joblib
         model = _joblib.load(artifact_path)
-        return model.predict(X)
+        y_pred = model.predict(X)
+
+    # 發電量不可能為負數，將負值截斷為 0
+    return np.maximum(y_pred, 0)
 
 
 # ───────────────────────────────────────
@@ -415,7 +424,7 @@ async def predict_file_multi(
             if actual_eac is not None and pv is not None:
                 act = float(actual_eac[i]) if not pd.isna(actual_eac[i]) else None
                 if act is not None and act != 0:
-                    ep = round(abs(pv - act) / abs(act) * 100, 2)
+                    ep = round((pv - act) / abs(act) * 100, 2)
                 elif act == 0 and pv == 0:
                     ep = 0.0
             err_vals.append(ep)
@@ -431,7 +440,7 @@ async def predict_file_multi(
             "model_type": tm.model_type,
             "status": "ok",
             "total_predicted_eac": round(sum(valid_preds), 2) if valid_preds else None,
-            "avg_error_pct": round(sum(valid_errors) / len(valid_errors), 2) if valid_errors else None,
+            "avg_error_pct": round(sum(abs(e) for e in valid_errors) / len(valid_errors), 2) if valid_errors else None,
         })
 
     # 6. 組合 rows_out

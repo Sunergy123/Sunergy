@@ -81,12 +81,13 @@ const getErrorColor = (pct) => {
 export default function PredictSolar({
   activePage,
   onBack,
-  onNavigateToDashboard,
-  onLogout,
-  onNavigateToSites,
-  onNavigateToTrain,
-  onNavigateToPredict,
-  onNavigateToModelMgmt
+  onNavigateToDashboard, 
+  onLogout, 
+  onNavigateToSites, 
+  onNavigateToTrain, 
+  onNavigateToPredict, 
+  onNavigateToChangePassword,
+  onNavigateToModelMgmt 
 }) {
   const [file, setFile] = useState(null);
   const [selectedModelIds, setSelectedModelIds] = useState([]);
@@ -194,7 +195,7 @@ export default function PredictSolar({
     }
   };
 
-  const navProps = { onNavigateToDashboard, onNavigateToTrain, onNavigateToPredict, onNavigateToSites, onNavigateToModelMgmt, onLogout };
+  const navProps = { onNavigateToDashboard, onNavigateToTrain, onNavigateToPredict, onNavigateToSites, onNavigateToModelMgmt, onNavigateToChangePassword,onLogout };
 
   const displayCols = result ? result.columns : [];
 

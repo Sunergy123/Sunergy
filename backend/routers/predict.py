@@ -217,20 +217,44 @@ async def predict_file(
         r["predicted_EAC"] = pred_val
         if actual_eac is not None and pred_val is not None:
             act = float(actual_eac[i]) if not pd.isna(actual_eac[i]) else None
-            if act is not None and act != 0:
-                r["error_pct"] = round((pred_val - act) / abs(act) * 100, 2)
-            elif act == 0 and pred_val == 0:
-                r["error_pct"] = 0.0
+            if act is not None:
+                r["error_abs"] = round(pred_val - act, 4)
+                if act != 0:
+                    r["error_pct"] = round((pred_val - act) / abs(act) * 100, 2)
+                elif pred_val == 0:
+                    r["error_pct"] = 0.0
+                else:
+                    r["error_pct"] = None
             else:
                 r["error_pct"] = None
+                r["error_abs"] = None
         else:
             r["error_pct"] = None
+            r["error_abs"] = None
         rows_out.append(r)
 
-    # summary stats
-    errors = [r["error_pct"] for r in rows_out if r["error_pct"] is not None]
-    avg_error = round(sum(abs(e) for e in errors) / len(errors), 2) if errors else None
+    # summary stats — WMAPE + MAE
     total_pred = round(sum(r["predicted_EAC"] for r in rows_out if r["predicted_EAC"] is not None), 2)
+    total_actual = None
+    avg_error = None
+    avg_error_abs = None
+    if actual_eac is not None:
+        valid_acts = [float(a) for a in actual_eac if not pd.isna(a)]
+        total_actual = round(sum(valid_acts), 2) if valid_acts else None
+        abs_errs, abs_acts = [], []
+        abs_diffs = []
+        for idx, r in enumerate(rows_out):
+            p = r.get("predicted_EAC")
+            a = float(actual_eac[idx]) if not pd.isna(actual_eac[idx]) else None
+            if p is not None and a is not None:
+                abs_diffs.append(abs(p - a))
+                if a != 0:
+                    abs_errs.append(abs(p - a))
+                    abs_acts.append(abs(a))
+        if abs_acts:
+            avg_error = round(sum(abs_errs) / sum(abs_acts) * 100, 2)
+        if abs_diffs:
+            avg_error_abs = round(sum(abs_diffs) / len(abs_diffs), 4)
 
     # Remove time-derived columns from output (they are internal features only)
     _hide = {'hour', 'dayofweek', 'month', 'hour_sin', 'hour_cos'}
@@ -247,8 +271,10 @@ async def predict_file(
         "model_id": tm.model_id,
         "total_rows": len(rows_out),
         "total_predicted_eac": total_pred,
+        "total_actual_eac": total_actual,
         "avg_error_pct": avg_error,
-        "columns": display_cols + ["predicted_EAC", "error_pct"],
+        "avg_error_abs": avg_error_abs,
+        "columns": display_cols + ["predicted_EAC", "error_pct", "error_abs"],
         "rows": rows_out,
     })
 
@@ -410,37 +436,65 @@ async def predict_file_multi(
         # column names for this model
         pred_col = f"pred_{tm.model_type}_{tm.model_id}"
         err_col = f"err_{tm.model_type}_{tm.model_id}"
-        pred_columns.extend([pred_col, err_col])
+        eabs_col = f"eabs_{tm.model_type}_{tm.model_id}"
+        pred_columns.extend([pred_col, err_col, eabs_col])
 
         # compute per-row predicted + error
         actual_eac = df_copy[target_col].values if target_col in df_copy.columns else None
         pred_vals = []
         err_vals = []
+        eabs_vals = []
         for i in range(len(y_pred)):
             pv = None if (isinstance(y_pred[i], float) and np.isnan(y_pred[i])) else round(float(y_pred[i]), 4)
             pred_vals.append(pv)
 
             ep = None
+            ea = None
             if actual_eac is not None and pv is not None:
                 act = float(actual_eac[i]) if not pd.isna(actual_eac[i]) else None
-                if act is not None and act != 0:
-                    ep = round((pv - act) / abs(act) * 100, 2)
-                elif act == 0 and pv == 0:
-                    ep = 0.0
+                if act is not None:
+                    ea = round(pv - act, 4)
+                    if act != 0:
+                        ep = round((pv - act) / abs(act) * 100, 2)
+                    elif pv == 0:
+                        ep = 0.0
             err_vals.append(ep)
+            eabs_vals.append(ea)
 
         all_predictions[pred_col] = pred_vals
         all_predictions[err_col] = err_vals
+        all_predictions[eabs_col] = eabs_vals
 
-        # summary
-        valid_errors = [e for e in err_vals if e is not None]
+        # summary — WMAPE + MAE
         valid_preds = [p for p in pred_vals if p is not None]
+        wmape = None
+        mae = None
+        total_act = None
+        if actual_eac is not None:
+            valid_acts = [float(a) for a in actual_eac if not pd.isna(a)]
+            total_act = round(sum(valid_acts), 2) if valid_acts else None
+            abs_errs, abs_acts = [], []
+            abs_diffs = []
+            for idx in range(len(pred_vals)):
+                p = pred_vals[idx]
+                a = float(actual_eac[idx]) if not pd.isna(actual_eac[idx]) else None
+                if p is not None and a is not None:
+                    abs_diffs.append(abs(p - a))
+                    if a != 0:
+                        abs_errs.append(abs(p - a))
+                        abs_acts.append(abs(a))
+            if abs_acts:
+                wmape = round(sum(abs_errs) / sum(abs_acts) * 100, 2)
+            if abs_diffs:
+                mae = round(sum(abs_diffs) / len(abs_diffs), 4)
         models_summary.append({
             "model_id": tm.model_id,
             "model_type": tm.model_type,
             "status": "ok",
             "total_predicted_eac": round(sum(valid_preds), 2) if valid_preds else None,
-            "avg_error_pct": round(sum(abs(e) for e in valid_errors) / len(valid_errors), 2) if valid_errors else None,
+            "total_actual_eac": total_act,
+            "avg_error_pct": wmape,
+            "avg_error_abs": mae,
         })
 
     # 6. 組合 rows_out

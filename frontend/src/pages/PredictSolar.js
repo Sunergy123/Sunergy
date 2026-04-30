@@ -106,6 +106,7 @@ export default function PredictSolar({
   const [isPredicting, setIsPredicting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [errorMode, setErrorMode] = useState('pct'); // 'pct' | 'abs'
 
   // pagination
   const PAGE_SIZE = 20;
@@ -171,7 +172,9 @@ export default function PredictSolar({
             model_type: json.model_type,
             status: 'ok',
             total_predicted_eac: json.total_predicted_eac,
+            total_actual_eac: json.total_actual_eac,
             avg_error_pct: json.avg_error_pct,
+            avg_error_abs: json.avg_error_abs,
           }],
           total_rows: json.total_rows,
           columns: json.columns,
@@ -197,11 +200,16 @@ export default function PredictSolar({
 
   const navProps = { onNavigateToDashboard, onNavigateToTrain, onNavigateToPredict, onNavigateToSites, onNavigateToModelMgmt, onNavigateToChangePassword,onLogout };
 
-  const displayCols = result ? result.columns : [];
+  const displayCols = result ? result.columns.filter(col => {
+    if (errorMode === 'pct') return !col.startsWith('eabs_') && col !== 'error_abs';
+    return !col.startsWith('err_') && col !== 'error_pct';
+  }) : [];
 
   // Detect which columns are prediction/error columns
   const isPredCol = (col) => col.startsWith('pred_') || col === 'predicted_EAC';
-  const isErrCol = (col) => col.startsWith('err_') || col === 'error_pct';
+  const isErrPctCol = (col) => col.startsWith('err_') || col === 'error_pct';
+  const isErrAbsCol = (col) => col.startsWith('eabs_') || col === 'error_abs';
+  const isErrCol = (col) => isErrPctCol(col) || isErrAbsCol(col);
 
   // Determine if a column is numeric based on first few non-null values
   const isNumericCol = useCallback((col) => {
@@ -325,6 +333,7 @@ export default function PredictSolar({
   const getColLabel = (col) => {
     if (col === 'predicted_EAC') return '預測 EAC';
     if (col === 'error_pct') return '誤差%';
+    if (col === 'error_abs') return '誤差 kW';
     if (col.startsWith('pred_')) {
       const parts = col.replace('pred_', '').split('_');
       return `預測 ${parts.slice(0, -1).join('_')}`;
@@ -332,6 +341,10 @@ export default function PredictSolar({
     if (col.startsWith('err_')) {
       const parts = col.replace('err_', '').split('_');
       return `誤差% ${parts.slice(0, -1).join('_')}`;
+    }
+    if (col.startsWith('eabs_')) {
+      const parts = col.replace('eabs_', '').split('_');
+      return `誤差kW ${parts.slice(0, -1).join('_')}`;
     }
     return col;
   };
@@ -343,7 +356,7 @@ export default function PredictSolar({
 
     // Build header row: # + displayCols + (single mode: 燈號)
     const headerLabels = ['#', ...displayCols.map(getColLabel)];
-    if (result.mode === 'single') headerLabels.push('燈號');
+    if (result.mode === 'single' && errorMode === 'pct') headerLabels.push('燈號');
 
     // Build data rows
     const wsData = [headerLabels];
@@ -353,7 +366,7 @@ export default function PredictSolar({
         const val = row[col];
         rowArr.push(val === null || val === undefined ? '' : val);
       });
-      if (result.mode === 'single') {
+      if (result.mode === 'single' && errorMode === 'pct') {
         const ep = row.error_pct;
         if (ep !== null && ep !== undefined) {
           const v = Math.abs(Number(ep));
@@ -607,6 +620,8 @@ export default function PredictSolar({
             <section className="space-y-3 animate-fade-in">
               {okModels.map((m, i) => {
                 const c = MODEL_COLORS[i % MODEL_COLORS.length];
+                const diff = (m.total_predicted_eac != null && m.total_actual_eac != null)
+                  ? m.total_predicted_eac - m.total_actual_eac : null;
                 return (
                   <div key={m.model_id} className={`${c.bg} border ${c.border} p-5 rounded-2xl`}>
                     <div className="flex items-center gap-2 mb-3">
@@ -614,22 +629,56 @@ export default function PredictSolar({
                       <span className={`text-sm font-black ${c.text}`}>{m.model_type}</span>
                       <span className="text-xs text-white/30 font-mono">#{m.model_id}</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-xs text-white/30 font-bold uppercase tracking-widest mb-1">預估發電量</p>
+
+                    {/* 預估 / 實際 / 差異 */}
+                    <div className="space-y-2 mb-3">
+                      <div className="flex justify-between items-baseline">
+                        <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest">預估發電量</p>
                         <div className="flex items-baseline gap-1">
-                          <span className="text-xl font-black font-mono text-white">{m.total_predicted_eac?.toLocaleString() ?? '—'}</span>
-                          <span className={`text-sm font-bold ${c.text}`}>kWh</span>
+                          <span className="text-lg font-black font-mono text-white">{m.total_predicted_eac?.toLocaleString() ?? '—'}</span>
+                          <span className={`text-xs font-bold ${c.text}`}>kWh</span>
                         </div>
                       </div>
+                      {m.total_actual_eac != null && (
+                        <div className="flex justify-between items-baseline">
+                          <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest">實際發電量</p>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-lg font-black font-mono text-white">{m.total_actual_eac?.toLocaleString()}</span>
+                            <span className="text-xs font-bold text-white/40">kWh</span>
+                          </div>
+                        </div>
+                      )}
+                      {diff !== null && (
+                        <div className="flex justify-between items-baseline">
+                          <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest">差異</p>
+                          <div className="flex items-baseline gap-1">
+                            <span className={`text-lg font-black font-mono ${diff > 0 ? 'text-orange-400' : diff < 0 ? 'text-cyan-400' : 'text-white/40'}`}>
+                              {diff > 0 ? '+' : ''}{diff.toLocaleString(undefined, {maximumFractionDigits: 2})}
+                            </span>
+                            <span className="text-xs font-bold text-white/40">kWh</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 誤差指標 */}
+                    <div className="grid grid-cols-2 gap-3 pt-3 border-t border-white/5">
                       <div>
-                        <p className="text-xs text-white/30 font-bold uppercase tracking-widest mb-1">平均誤差</p>
+                        <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest mb-1">WMAPE</p>
                         <div className="flex items-baseline gap-1">
-                          <span className="text-xl font-black font-mono text-white">{m.avg_error_pct !== null && m.avg_error_pct !== undefined ? m.avg_error_pct.toFixed(2) : '—'}</span>
+                          <span className="text-xl font-black font-mono text-white">{m.avg_error_pct != null ? m.avg_error_pct.toFixed(2) : '—'}</span>
                           <span className={`text-sm font-bold ${c.text}`}>%</span>
                         </div>
                       </div>
+                      <div>
+                        <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest mb-1">MAE</p>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-xl font-black font-mono text-white">{m.avg_error_abs != null ? m.avg_error_abs.toFixed(2) : '—'}</span>
+                          <span className={`text-sm font-bold ${c.text}`}>kW</span>
+                        </div>
+                      </div>
                     </div>
+
                     <div className="mt-3 pt-3 border-t border-white/5">
                       <OverallStatus avgError={m.avg_error_pct} />
                     </div>
@@ -678,6 +727,29 @@ export default function PredictSolar({
                         模型：<span className="text-primary font-bold">{okModels[0].model_type}</span>
                       </div>
                     )}
+
+                    {/* Error mode toggle */}
+                    <div className="flex items-center border border-white/10 rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => setErrorMode('pct')}
+                        className={`px-3 py-2 text-sm font-bold transition-all ${errorMode === 'pct'
+                          ? 'bg-primary/15 text-primary'
+                          : 'text-white/40 hover:bg-white/5 hover:text-white/60'
+                        }`}
+                      >
+                        %
+                      </button>
+                      <div className="w-px h-5 bg-white/10" />
+                      <button
+                        onClick={() => setErrorMode('abs')}
+                        className={`px-3 py-2 text-sm font-bold transition-all ${errorMode === 'abs'
+                          ? 'bg-primary/15 text-primary'
+                          : 'text-white/40 hover:bg-white/5 hover:text-white/60'
+                        }`}
+                      >
+                        kW
+                      </button>
+                    </div>
 
                     {/* Toggle filter button */}
                     <button
@@ -811,7 +883,7 @@ export default function PredictSolar({
                           const globalIdx = page * PAGE_SIZE + idx;
                           const singleErrPct = result.mode === 'single' ? row.error_pct : null;
                           const absErrPct = singleErrPct !== null && singleErrPct !== undefined ? Math.abs(singleErrPct) : null;
-                          const rowBg = absErrPct !== null
+                          const rowBg = errorMode === 'pct' && absErrPct !== null
                             ? (absErrPct > 15 ? 'bg-red-500/[0.03]' : absErrPct > 5 ? 'bg-yellow-500/[0.02]' : '')
                             : '';
                           return (
@@ -826,6 +898,26 @@ export default function PredictSolar({
                                 if (isPredCol(col)) cellClass += ` font-bold ${c ? c.text : 'text-primary'}`;
                                 else if (col === 'EAC') cellClass += ' text-blue-400';
                                 else if (isErrCol(col)) {
+                                  if (isErrAbsCol(col)) {
+                                    const numVal = val !== null && val !== undefined ? Number(val) : null;
+                                    const absV = numVal !== null ? Math.abs(numVal) : null;
+                                    let dotClass = 'bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.5)]';
+                                    let textClass = 'text-green-400';
+                                    if (absV !== null && absV > 5) { dotClass = 'bg-red-400 shadow-[0_0_6px_rgba(239,68,68,0.5)] animate-pulse'; textClass = 'text-red-400'; }
+                                    else if (absV !== null && absV > 1) { dotClass = 'bg-yellow-400 shadow-[0_0_6px_rgba(234,179,8,0.5)]'; textClass = 'text-yellow-400'; }
+                                    return (
+                                      <td key={col} className="px-4 py-2.5">
+                                        {numVal === null ? '—' :
+                                          <span className="inline-flex items-center gap-1.5">
+                                            <span className={`size-3 rounded-full ${dotClass}`} />
+                                            <span className={`text-sm font-mono font-bold ${textClass}`}>
+                                              {numVal > 0 ? '+' : ''}{numVal.toFixed(2)}
+                                            </span>
+                                          </span>
+                                        }
+                                      </td>
+                                    );
+                                  }
                                   return (
                                     <td key={col} className="px-4 py-2.5">
                                       <ErrorLight pct={val} />
@@ -835,7 +927,7 @@ export default function PredictSolar({
 
                                 return (
                                   <td key={col} className={cellClass}>
-                                    {val === null || val === undefined ? '—' : typeof val === 'number' ? (col.toLowerCase() === 'hour' || col.toLowerCase() === 'the_hour' ? Math.round(val) : Number(val).toFixed(4)) : String(val)}
+                                    {val === null || val === undefined ? '—' : typeof val === 'number' ? (col.toLowerCase() === 'hour' || col.toLowerCase() === 'the_hour' || col.toLowerCase() === 'thehour' ? Math.round(val) : Number(val).toFixed(4)) : (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val) ? val.split('T')[0] : String(val))}
                                   </td>
                                 );
                               })}

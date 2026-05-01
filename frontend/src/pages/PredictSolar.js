@@ -4,6 +4,29 @@ import Navbar from '../components/Navbar';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 
+
+/* ── 公式說明 Tooltip ── */
+function InfoTooltip({ text }) {
+  return (
+    <div className="relative group inline-block">
+      <svg
+        className="ml-1 w-4 h-4 text-white/40 cursor-pointer"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        viewBox="0 0 24 24"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.5 9a2.5 2.5 0 1 1 4.5 1.5c-.5.7-1.5 1.2-1.5 2.5" />
+        <circle cx="12" cy="17" r="0.8" fill="currentColor" />
+      </svg>
+      <div className="absolute z-50 hidden group-hover:block w-72 p-3 rounded-lg bg-black text-white text-xs shadow-xl border border-white/10 -top-2 left-6 whitespace-pre-line">
+        {text}
+      </div>
+    </div>
+  );
+}
+
 /* ── 誤差燈號組件 ── */
 const ErrorLight = ({ pct }) => {
   if (pct === null || pct === undefined) return <span className="text-white/20 text-sm">—</span>;
@@ -664,14 +687,18 @@ export default function PredictSolar({
                     {/* 誤差指標 */}
                     <div className="grid grid-cols-2 gap-3 pt-3 border-t border-white/5">
                       <div>
-                        <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest mb-1">WMAPE</p>
+                        <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest mb-1 flex items-center">WMAPE
+                          <InfoTooltip text={"WMAPE（加權平均絕對百分比誤差）\n\n公式：Σ|預測値 − 實際値| ÷ Σ|實際値| × 100%\n\n由於以實際發電量加權，高發電時段對整體誤差影響更大，避免了低發電時段（如清晨/傍晚）的極端百分比拉高平均誤差。"} />
+                        </p>
                         <div className="flex items-baseline gap-1">
                           <span className="text-xl font-black font-mono text-white">{m.avg_error_pct != null ? m.avg_error_pct.toFixed(2) : '—'}</span>
                           <span className={`text-sm font-bold ${c.text}`}>%</span>
                         </div>
                       </div>
                       <div>
-                        <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest mb-1">MAE</p>
+                        <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest mb-1 flex items-center">MAE
+                          <InfoTooltip text={"MAE（平均絕對誤差）\n\n公式：Σ|預測値 − 實際値| ÷ 筆數\n\n單位為 kW，直接反映模型預測值與實際值之間的平均絕對差距，不受發電量量級影響，適合用於評估模型的絕對精度。"} />
+                        </p>
                         <div className="flex items-baseline gap-1">
                           <span className="text-xl font-black font-mono text-white">{m.avg_error_abs != null ? m.avg_error_abs.toFixed(2) : '—'}</span>
                           <span className={`text-sm font-bold ${c.text}`}>kW</span>
@@ -729,26 +756,32 @@ export default function PredictSolar({
                     )}
 
                     {/* Error mode toggle */}
-                    <div className="flex items-center border border-white/10 rounded-lg overflow-hidden">
-                      <button
-                        onClick={() => setErrorMode('pct')}
-                        className={`px-3 py-2 text-sm font-bold transition-all ${errorMode === 'pct'
-                          ? 'bg-primary/15 text-primary'
-                          : 'text-white/40 hover:bg-white/5 hover:text-white/60'
-                        }`}
-                      >
-                        %
-                      </button>
-                      <div className="w-px h-5 bg-white/10" />
-                      <button
-                        onClick={() => setErrorMode('abs')}
-                        className={`px-3 py-2 text-sm font-bold transition-all ${errorMode === 'abs'
-                          ? 'bg-primary/15 text-primary'
-                          : 'text-white/40 hover:bg-white/5 hover:text-white/60'
-                        }`}
-                      >
-                        kW
-                      </button>
+                    <div className="flex items-center gap-1">
+                      <div className="flex items-center border border-white/10 rounded-lg overflow-hidden">
+                        <button
+                          onClick={() => setErrorMode('pct')}
+                          className={`px-3 py-2 text-sm font-bold transition-all ${errorMode === 'pct'
+                            ? 'bg-primary/15 text-primary'
+                            : 'text-white/40 hover:bg-white/5 hover:text-white/60'
+                          }`}
+                        >
+                          %
+                        </button>
+                        <div className="w-px h-5 bg-white/10" />
+                        <button
+                          onClick={() => setErrorMode('abs')}
+                          className={`px-3 py-2 text-sm font-bold transition-all ${errorMode === 'abs'
+                            ? 'bg-primary/15 text-primary'
+                            : 'text-white/40 hover:bg-white/5 hover:text-white/60'
+                          }`}
+                        >
+                          kW
+                        </button>
+                      </div>
+                      <InfoTooltip text={errorMode === 'pct'
+                        ? "百分比誤差（逐筆）\n\n公式：(預測値 − 實際値) ÷ |實際値| × 100%\n\n正値：模型預測高於實際（高估）\n負値：模型預測低於實際（低估）\n\n🟢 ≤ 5% │ 🟡 5%～15% │ 🔴 > 15%"
+                        : "絕對誤差（逐筆）\n\n公式：預測値 − 實際値\n單位：kW\n\n正値：模型預測高於實際（高估）\n負値：模型預測低於實際（低估）\n\n🟢 ≤ 1kW │ 🟡 1～5kW │ 🔴 > 5kW"
+                      } />
                     </div>
 
                     {/* Toggle filter button */}

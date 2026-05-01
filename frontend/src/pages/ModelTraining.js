@@ -2,6 +2,22 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 
+/* ── 公式說明 Tooltip ── */
+function InfoTooltip({ text }) {
+  return (
+    <div className="relative group inline-block">
+      <svg className="ml-1 w-4 h-4 text-white/40 cursor-pointer" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.5 9a2.5 2.5 0 1 1 4.5 1.5c-.5.7-1.5 1.2-1.5 2.5" />
+        <circle cx="12" cy="17" r="0.8" fill="currentColor" />
+      </svg>
+      <div className="absolute z-50 hidden group-hover:block w-72 p-3 rounded-lg bg-black text-white text-xs shadow-xl border border-white/10 -top-2 left-6 whitespace-pre-line">
+        {text}
+      </div>
+    </div>
+  );
+}
+
 // --- 輔助組件：警示燈 ---
 const StatusLight = ({ wmape }) => {
   const value = parseFloat(wmape);
@@ -236,7 +252,7 @@ export default function ModelTraining({
       name: '決定係數',
       desc: '衡量模型解釋資料變異的能力。越接近 1 代表模型擬合度越高，預測越準確。',
       formula: '1 - (SS_res / SS_tot)',
-      color: 'text-green-400'
+      color: 'text-white'
     },
     {
       id: 'RMSE',
@@ -257,7 +273,7 @@ export default function ModelTraining({
       name: '加權平均絕對百分比誤差',
       desc: '將總絕對誤差除以總實際發電量。相對於 MAPE，它解決了實際值為 0 時的計算問題。',
       formula: 'sum(abs(error)) / sum(abs(actual))',
-      color: 'text-yellow-500'
+      color: 'text-green-400'
     }
   ];
   return (
@@ -338,8 +354,14 @@ export default function ModelTraining({
               <span className="size-5 rounded-full bg-primary text-background-dark flex items-center justify-center text-[10px]">2</span> 選擇模型
             </h2>
             <div className="grid grid-cols-2 gap-2">
-              {['XGBoost', 'SVR', 'RandomForest'].map(m => (
-                <button key={m} onClick={() => toggleModel(m)} className={`p-2 rounded-lg border text-[10px] font-bold transition-all ${selectedModels.includes(m) ? 'border-primary bg-primary/10 text-primary' : 'border-white/10 bg-white/5 text-white/40'}`}>{m}</button>
+              {[
+                { id: 'XGBoost', tip: 'XGBoost（極端梯度提升）\n\n透過逐步建立多棵決策樹來修正前一棵的錯誤，像「集思廣益」不斷改進預測。\n\n優點：精準度高、支援多種正則化防止過擬合\n適合：大多數結構化數據場景' },
+                { id: 'SVR', tip: 'SVR（支援向量迴歸）\n\n在資料中找到一條最佳曲線，讓大部分資料點落在容許範圍內。\n\n優點：對小樣本表現佳、抗噪能力強\n適合：資料量較小、特徵較少的場景' },
+                { id: 'RandomForest', tip: 'Random Forest（隨機森林）\n\n同時建立多棵獨立的決策樹，最終取所有樹的平均結果。\n\n優點：穩定性高、不易過擬合、可解釋性佳\n適合：需要穩定預測的通用場景' },
+              ].map(m => (
+                <button key={m.id} onClick={() => toggleModel(m.id)} className={`p-2 rounded-lg border text-[10px] font-bold transition-all flex items-center justify-center gap-0.5 ${selectedModels.includes(m.id) ? 'border-primary bg-primary/10 text-primary' : 'border-white/10 bg-white/5 text-white/40'}`}>
+                  {m.id}<InfoTooltip text={m.tip} />
+                </button>
               ))}
             </div>
           </section>
@@ -350,8 +372,10 @@ export default function ModelTraining({
               <span className="size-5 rounded-full bg-primary text-background-dark flex items-center justify-center text-[10px]">3</span> 調整參數
             </h2>
             {/* 策略選擇 */}
-            <div className="mb-4 flex items-center gap-2 text-[10px]">
-              <span className="text-white/50">策略選擇</span>
+            <div className="mb-4 flex flex-wrap items-center gap-2 text-[10px]">
+              <span className="text-white/50 flex items-center">策略選擇
+                <InfoTooltip text={"系統會在您設定的超參數區間內，自動搜尋一組最佳參數組合。\n\n・GRID（網格搜索）：窮舉所有可能的參數組合，找出最佳解。精確但耗時較長。\n・BAYES（貝葉斯優化）：根據歷史結果智慧推測下一個最有可能的最佳組合，效率更高。TRIALS 為嘗試次數，越多越精準但越慢。"} />
+              </span>
               {["grid", "bayes"].map((sg) => (
                 <label key={sg} className={["px-2", "py-1", "rounded", "border", "cursor-pointer", (strategy === sg ? "border-primary text-primary" : "border-white/10 text-white/50")].join(' ')}>
                   <input type="radio" name="strategy" value={sg} checked={strategy === sg} onChange={() => setStrategy(sg)} className="hidden" />
@@ -373,14 +397,14 @@ export default function ModelTraining({
 
                   {id === 'XGBoost' && (
                     <>
-                      <IntervalSlider label="n_estimators" min={10} max={2000} start={paramIntervals.XGB_trees_s} end={paramIntervals.XGB_trees_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_trees_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_trees_e: v })} />
-                      <IntervalSlider label="max_depth" min={1} max={16} start={paramIntervals.XGB_depth_s} end={paramIntervals.XGB_depth_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_depth_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_depth_e: v })} />
-                      <IntervalSlider step={0.01} label="learning_rate" min={0.01} max={0.3} start={paramIntervals.XGB_lr_s} end={paramIntervals.XGB_lr_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_lr_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_lr_e: v })} />
-                      <IntervalSlider step={0.05} label="subsample" min={0.5} max={1.0} start={paramIntervals.XGB_subsample_s} end={paramIntervals.XGB_subsample_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_subsample_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_subsample_e: v })} />
-                      <IntervalSlider step={0.05} label="colsample_bytree" min={0.5} max={1.0} start={paramIntervals.XGB_colsample_s} end={paramIntervals.XGB_colsample_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_colsample_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_colsample_e: v })} />
-                      <IntervalSlider step={1} label="min_child_weight" min={0} max={10} start={paramIntervals.XGB_min_child_s} end={paramIntervals.XGB_min_child_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_min_child_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_min_child_e: v })} />
-                      <IntervalSlider step={0.1} label="reg_lambda" min={0.0} max={5.0} start={paramIntervals.XGB_lambda_s} end={paramIntervals.XGB_lambda_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_lambda_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_lambda_e: v })} />
-                      <IntervalSlider step={0.1} label="reg_alpha" min={0.0} max={5.0} start={paramIntervals.XGB_alpha_s} end={paramIntervals.XGB_alpha_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_alpha_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_alpha_e: v })} />
+                      <IntervalSlider label={<>n_estimators（樹的數量）<InfoTooltip text="決定模型要建立多少棵決策樹。數量越多，模型越精準但訓練越慢。" /></>} min={10} max={2000} start={paramIntervals.XGB_trees_s} end={paramIntervals.XGB_trees_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_trees_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_trees_e: v })} />
+                      <IntervalSlider label={<>max_depth（樹的深度）<InfoTooltip text="每棵樹最多可以有幾層分支。越深越能捕捉複雜規律，但也更容易過擬合。" /></>} min={1} max={16} start={paramIntervals.XGB_depth_s} end={paramIntervals.XGB_depth_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_depth_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_depth_e: v })} />
+                      <IntervalSlider step={0.01} label={<>learning_rate（學習率）<InfoTooltip text="每棵新樹對最終結果的貢獻程度。值越小學得越謹慎，通常需要更多樹來補償。" /></>} min={0.01} max={0.3} start={paramIntervals.XGB_lr_s} end={paramIntervals.XGB_lr_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_lr_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_lr_e: v })} />
+                      <IntervalSlider step={0.05} label={<>subsample（資料抽樣比例）<InfoTooltip text="每棵樹使用多少比例的訓練資料。低於 1.0 可增加模型多樣性，防止過擬合。" /></>} min={0.5} max={1.0} start={paramIntervals.XGB_subsample_s} end={paramIntervals.XGB_subsample_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_subsample_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_subsample_e: v })} />
+                      <IntervalSlider step={0.05} label={<>colsample_bytree（特徵抽樣比例）<InfoTooltip text="每棵樹使用多少比例的特徵欄位。降低比例可減少特徵間的相關性，提升穩定度。" /></>} min={0.5} max={1.0} start={paramIntervals.XGB_colsample_s} end={paramIntervals.XGB_colsample_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_colsample_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_colsample_e: v })} />
+                      <IntervalSlider step={1} label={<>min_child_weight（最小葉節點權重）<InfoTooltip text="每個葉節點最少需要的樣本權重。值越大，模型越保守、越不容易過擬合。" /></>} min={0} max={10} start={paramIntervals.XGB_min_child_s} end={paramIntervals.XGB_min_child_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_min_child_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_min_child_e: v })} />
+                      <IntervalSlider step={0.1} label={<>reg_lambda（L2 正則化）<InfoTooltip text="對模型權重的平方進行懲罰，防止權重過大導致過擬合。值越大正則化越強。" /></>} min={0.0} max={5.0} start={paramIntervals.XGB_lambda_s} end={paramIntervals.XGB_lambda_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_lambda_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_lambda_e: v })} />
+                      <IntervalSlider step={0.1} label={<>reg_alpha（L1 正則化）<InfoTooltip text="對模型權重的絕對值進行懲罰，可使部分不重要的特徵權重歸零，達到特徵篩選效果。" /></>} min={0.0} max={5.0} start={paramIntervals.XGB_alpha_s} end={paramIntervals.XGB_alpha_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, XGB_alpha_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, XGB_alpha_e: v })} />
                       {strategy === 'grid' && (function () {
                         const cnt = (s, e, st) => {
                           const step = Math.max(Number(st) || 0, 0.000001);
@@ -410,10 +434,10 @@ export default function ModelTraining({
                   )}
                   {id === 'SVR' && (
                     <>
-                      <IntervalSlider label="C (懲罰參數)" min={0.1} max={100} step={0.1} start={paramIntervals.SVR_c_s} end={paramIntervals.SVR_c_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, SVR_c_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, SVR_c_e: v })} />
-                      <IntervalSlider label="epsilon (容忍度)" min={0.001} max={2.0} step={0.01} start={paramIntervals.SVR_epsilon_s} end={paramIntervals.SVR_epsilon_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, SVR_epsilon_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, SVR_epsilon_e: v })} />
+                      <IntervalSlider label={<>C（懲罰參數）<InfoTooltip text="控制模型對錯誤的容忍度。值越大，模型越努力擬合每個資料點，但可能過擬合；值越小則越寬鬆。" /></>} min={0.1} max={100} step={0.1} start={paramIntervals.SVR_c_s} end={paramIntervals.SVR_c_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, SVR_c_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, SVR_c_e: v })} />
+                      <IntervalSlider label={<>epsilon（容忍度）<InfoTooltip text="定義一個不計算誤差的容許區間。在這個範圍內的預測誤差會被忽略。值越大越寬鬆，模型越簡單。" /></>} min={0.001} max={2.0} step={0.01} start={paramIntervals.SVR_epsilon_s} end={paramIntervals.SVR_epsilon_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, SVR_epsilon_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, SVR_epsilon_e: v })} />
                       <div className="mb-6">
-                        <label className="text-xs font-bold text-primary mb-2 block">gamma (核函數係數)</label>
+                        <label className="text-xs font-bold text-primary mb-2 flex items-center">gamma（核函數係數）<InfoTooltip text="控制單一資料點的影響範圍。\n\n・scale：自動根據特徵數與變異數計算（推薦）\n・auto：僅根據特徵數計算" /></label>
                         <div className="flex gap-2">
                           {['scale', 'auto'].map(g => (
                             <button key={g} onClick={() => setParamIntervals({ ...paramIntervals, SVR_gamma: g })} className={`px-3 py-1.5 rounded border text-[10px] font-bold transition-all ${paramIntervals.SVR_gamma === g ? 'border-primary bg-primary/10 text-primary' : 'border-white/10 bg-white/5 text-white/40'}`}>{g}</button>
@@ -424,8 +448,8 @@ export default function ModelTraining({
                   )}
                   {id === 'RandomForest' && (
                     <>
-                      <IntervalSlider label="n_estimators (森林規模)" min={10} max={1000} start={paramIntervals.RF_trees_s} end={paramIntervals.RF_trees_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, RF_trees_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, RF_trees_e: v })} />
-                      <IntervalSlider label="max_depth (最大深度)" min={1} max={30} step={1} start={paramIntervals.RF_depth_s} end={paramIntervals.RF_depth_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, RF_depth_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, RF_depth_e: v })} />
+                      <IntervalSlider label={<>n_estimators（樹的數量）<InfoTooltip text="森林中包含多少棵決策樹。數量越多預測越穩定，但訓練時間越長。" /></>} min={10} max={1000} start={paramIntervals.RF_trees_s} end={paramIntervals.RF_trees_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, RF_trees_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, RF_trees_e: v })} />
+                      <IntervalSlider label={<>max_depth（最大深度）<InfoTooltip text="每棵樹最多可以有幾層分支。越深越能學習複雜規律，但太深會過擬合。" /></>} min={1} max={30} step={1} start={paramIntervals.RF_depth_s} end={paramIntervals.RF_depth_e} onStartChange={(v) => setParamIntervals({ ...paramIntervals, RF_depth_s: v })} onEndChange={(v) => setParamIntervals({ ...paramIntervals, RF_depth_e: v })} />
                     </>
                   )}
                 </div>
@@ -465,6 +489,12 @@ export default function ModelTraining({
                 {/* <SolarProductionChart results={trainingResults} activeLines={activeChartLines} /> */}
 
                 <div className="mt-4 overflow-hidden rounded-xl border border-white/10 shadow-2xl bg-black/20">
+                  {(() => {
+                    const okResults = Object.values(trainingResults).filter(r => r.status === 'ok' && r.wmape !== undefined);
+                    const bestId = okResults.length > 1
+                      ? okResults.reduce((best, r) => Number(r.wmape) < Number(best.wmape) ? r : best).id
+                      : null;
+                    return (
                   <table className="w-full text-sm text-left">
                     <thead className="bg-white/5 text-white/60 uppercase tracking-wider">
                       <tr>
@@ -490,17 +520,24 @@ export default function ModelTraining({
                           </tr>
                         ) : (
                           <tr key={res.id} className="hover:bg-white/5 transition-colors">
-                            <td className="px-6 py-5 font-bold text-primary font-sans text-lg">{res.id}</td>
+                            <td className="px-6 py-5 font-bold text-primary font-sans text-lg">
+                              {res.id}
+                              {bestId === res.id && (
+                                <span className="ml-2 text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-bold align-middle">★ 推薦</span>
+                              )}
+                            </td>
                             <td className="px-6 py-5"><StatusLight wmape={res.wmape} /></td>
-                            <td className="px-6 py-5 text-right text-green-400 text-base font-bold">{res.r2 !== undefined ? Number(res.r2).toFixed(3) : '-'}</td>
+                            <td className="px-6 py-5 text-right text-base font-bold">{res.r2 !== undefined ? Number(res.r2).toFixed(3) : '-'}</td>
                             <td className="px-6 py-5 text-right text-base">{res.rmse !== undefined ? Number(res.rmse).toFixed(3) : '-'}</td>
                             <td className="px-6 py-5 text-right text-base">{res.mae !== undefined ? Number(res.mae).toFixed(3) : '-'}</td>
-                            <td className="px-6 py-5 text-right text-yellow-500 text-base font-bold">{res.wmape !== undefined ? Number(res.wmape).toFixed(4) : '-'}</td>
+                            <td className="px-6 py-5 text-right text-green-400 text-base font-bold">{res.wmape !== undefined ? Number(res.wmape).toFixed(4) : '-'}</td>
                           </tr>
                         )
                       ))}
                     </tbody>
                   </table>
+                    );
+                  })()}
                 </div>
 
                 {/* Best Params 展示 */}

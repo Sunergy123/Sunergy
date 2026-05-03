@@ -17,6 +17,7 @@ import PredictSolar from './pages/PredictSolar';        // 步驟 5 (預測結�
 import Sites from './pages/Sites';
 import ModelManagement from './pages/ModelManagement';
 import UserGuide from './pages/UserGuide';
+import ErrorAnalysisPage from './pages/ErrorAnalysisPage'; // 步驟 6 (誤差值統計)
 
 // ===== Modals =====
 import CreateSiteModal from './components/CreateSiteModal';
@@ -38,6 +39,7 @@ function App() {
   const [selectedSite, setSelectedSite] = useState(null);
   const [fromSite, setFromSite] = useState(false);
   const [predictFrom, setPredictFrom] = useState(null);
+  const [predictResult, setPredictResult] = useState(null); // 給誤差分析頁使用
 
   // 登入持久化檢查 (從 App2.js 帶入)
   useEffect(() => {
@@ -77,8 +79,7 @@ function App() {
   const handleLogout = () => {
     setIsLoggedIn(false);
     setCurrentUser(null);
-    sessionStorage.removeItem("user");
-    sessionStorage.removeItem("currentPage"); 
+    setPredictResult(null);
     sessionStorage.clear();
     localStorage.clear();
     navigate("home");
@@ -194,6 +195,21 @@ function App() {
                 navigate('dashboard');
               }
             }}
+            onResultChange={setPredictResult}
+            onNavigateToErrorAnalysis={(result) => {
+              if (result) setPredictResult(result);
+              navigate('error-analysis');
+            }}
+          />
+        );
+
+      case 'error-analysis':
+        return (
+          <ErrorAnalysisPage
+            {...commonNavbarProps}
+            activePage={predictFrom === 'training' ? 'model-training' : 'error-analysis'}
+            result={predictResult}
+            onBack={() => navigate('predict-solar')}
           />
         );
 

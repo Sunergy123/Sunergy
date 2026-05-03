@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const fs=require\\('fs'\\); const src=fs.readFileSync\\('src/pages/ErrorAnalysisPage.js','utf8'\\); console.log\\('lines:', src.split\\(/\\\\n/\\).length\\); console.log\\('has trailing newline:', src.endsWith\\('\\\\n'\\)\\); console.log\\('console.log count:', \\(src.match\\(/console\\\\\\\\.log/g\\)||[]\\).length\\); console.log\\('console.warn count:', \\(src.match\\(/console\\\\\\\\.warn/g\\)||[]\\).length\\);\")",
+      "Bash(npx --no-install eslint src/pages/ErrorAnalysisPage.js src/pages/PredictSolar.js src/App.js)",
+      "Bash(python *)",
+      "Bash(npx --no-install eslint src/pages/ErrorAnalysisPage.js)",
+      "Bash(node *)"
+    ]
+  }
+}

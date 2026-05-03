@@ -104,13 +104,15 @@ const getErrorColor = (pct) => {
 export default function PredictSolar({
   activePage,
   onBack,
-  onNavigateToDashboard, 
-  onLogout, 
-  onNavigateToSites, 
-  onNavigateToTrain, 
-  onNavigateToPredict, 
+  onNavigateToDashboard,
+  onLogout,
+  onNavigateToSites,
+  onNavigateToTrain,
+  onNavigateToPredict,
   onNavigateToChangePassword,
-  onNavigateToModelMgmt 
+  onNavigateToModelMgmt,
+  onResultChange,
+  onNavigateToErrorAnalysis,
 }) {
   const [file, setFile] = useState(null);
   const [selectedModelIds, setSelectedModelIds] = useState([]);
@@ -180,6 +182,7 @@ export default function PredictSolar({
       const formData = new FormData();
       formData.append('file', file);
 
+      let nextResult;
       if (selectedModelIds.length === 1) {
         formData.append('model_id', selectedModelIds[0]);
         const res = await fetch('http://127.0.0.1:8000/train/predict-file', {
@@ -188,7 +191,7 @@ export default function PredictSolar({
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json?.detail || '預測失敗');
-        setResult({
+        nextResult = {
           mode: 'single',
           models_summary: [{
             model_id: json.model_id,
@@ -202,7 +205,7 @@ export default function PredictSolar({
           total_rows: json.total_rows,
           columns: json.columns,
           rows: json.rows,
-        });
+        };
       } else {
         formData.append('model_ids', selectedModelIds.join(','));
         const res = await fetch('http://127.0.0.1:8000/train/predict-file-multi', {
@@ -211,8 +214,10 @@ export default function PredictSolar({
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json?.detail || '預測失敗');
-        setResult({ mode: 'multi', ...json });
+        nextResult = { mode: 'multi', ...json };
       }
+      setResult(nextResult);
+      onResultChange?.(nextResult);
       setPage(0);
     } catch (e) {
       setError(e.message || '預測過程發生錯誤');
@@ -1028,6 +1033,15 @@ export default function PredictSolar({
       {/* Footer */}
       <div className="p-8 border-t border-white/10 bg-background-dark/95 flex justify-end gap-6 backdrop-blur-xl">
         <button onClick={onBack || onNavigateToDashboard} className="text-sm font-bold text-white/30 hover:text-white transition-colors">回模型訓練</button>
+        {result && onNavigateToErrorAnalysis && (
+          <button
+            onClick={() => onNavigateToErrorAnalysis(result)}
+            className="flex items-center gap-2 px-10 py-3 rounded-xl bg-primary/10 border border-primary/30 text-primary font-bold text-sm hover:bg-primary/20 transition-all"
+          >
+            <span className="material-symbols-outlined !text-base">analytics</span>
+            查看誤差值統計
+          </button>
+        )}
         <button onClick={onNavigateToDashboard} className="px-10 py-3 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm hover:bg-white/10 hover:border-white/20 transition-all">返回首頁看板</button>
       </div>
     </div>

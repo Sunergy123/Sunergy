@@ -22,6 +22,23 @@ if HAS_XGBOOST:
 router = APIRouter(prefix="/train", tags=["Predict"])
 
 
+def _build_ea_datetime(row, date_col, hour_col):
+    """組出供前端 ErrorAnalysisPage 使用的 'YYYY-MM-DD HH:00' 字串。"""
+    if not date_col or not hour_col:
+        return None
+    try:
+        date_val = row[date_col]
+        hour_val = row[hour_col]
+        if pd.isna(date_val) or pd.isna(hour_val):
+            return None
+        dt_parsed = pd.to_datetime(str(date_val), errors='coerce')
+        if pd.isna(dt_parsed):
+            return None
+        return f"{dt_parsed.year}-{dt_parsed.month:02d}-{dt_parsed.day:02d} {int(hour_val):02d}:00"
+    except Exception:
+        return None
+
+
 # ───────────────────────────────────────
 # POST /train/predict  — JSON 資料預測
 # ───────────────────────────────────────
@@ -259,9 +276,16 @@ async def predict_file(
     # Remove time-derived columns from output (they are internal features only)
     _hide = {'hour', 'dayofweek', 'month', 'hour_sin', 'hour_cos'}
     display_cols = [c for c in df.columns if c not in _hide]
-    for r in rows_out:
+
+    the_date_col = next((c for c in ['theDate', 'TheDate', 'the_date', 'date', 'Date'] if c in df.columns), None)
+    the_hour_col = next((c for c in ['theHour', 'TheHour', 'the_hour', 'Hour'] if c in df.columns), None)
+
+    for i, r in enumerate(rows_out):
         for h in _hide:
             r.pop(h, None)
+        ea_dt = _build_ea_datetime(df.iloc[i], the_date_col, the_hour_col)
+        if ea_dt is not None:
+            r['_ea_datetime'] = ea_dt
 
     tm.usage_count = (tm.usage_count or 0) + 1
     db.commit()
@@ -498,6 +522,9 @@ async def predict_file_multi(
         })
 
     # 6. 組合 rows_out
+    the_date_col = next((c for c in ['theDate', 'TheDate', 'the_date', 'date', 'Date'] if c in df.columns), None)
+    the_hour_col = next((c for c in ['theHour', 'TheHour', 'the_hour', 'Hour'] if c in df.columns), None)
+
     rows_out = []
     for i, row in df.iterrows():
         r = {}
@@ -510,6 +537,9 @@ async def predict_file_multi(
         # append each model's prediction columns
         for pc in pred_columns:
             r[pc] = all_predictions[pc][i] if i < len(all_predictions.get(pc, [])) else None
+        ea_dt = _build_ea_datetime(row, the_date_col, the_hour_col)
+        if ea_dt is not None:
+            r['_ea_datetime'] = ea_dt
         rows_out.append(r)
 
     return _to_native({

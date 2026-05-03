@@ -132,9 +132,10 @@ const TIME_MODES = [
    - 左鍵拖拽：平移
    - 雙擊 / Reset 按鈕：還原自動範圍
 ══════════════════════════════════════════════ */
-const LineChart = ({ series, xLabels, yMax: yMaxProp, warnThreshold, dangerThreshold, unit, axisLabel }) => {
-  const W = 900, H = 300;
-  const PAD = { top: 20, right: 24, bottom: 48, left: 52 };
+const LineChart = ({ series, xLabels, yMax: yMaxProp, warnThreshold, dangerThreshold, unit, axisLabel, chartTitle, baseHourNote }) => {
+  const W = 900, H = 400;
+  // bottom: 120px → 旋轉 -45° 後最長標籤（~10 字元×10px×cos45≈70px）完全在 viewBox 內
+  const PAD = { top: 28, right: 30, bottom: 120, left: 56 };
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;
   const clipId = useMemo(() => `lc-clip-${Math.random().toString(36).slice(2, 8)}`, []);
@@ -197,7 +198,7 @@ const LineChart = ({ series, xLabels, yMax: yMaxProp, warnThreshold, dangerThres
   const visEnd = Math.min(n - 1, Math.ceil(xEnd));
   const visibleN = Math.max(0, visEnd - visStart + 1);
   const xLabelStep = visibleN <= 12 ? 1 : Math.max(1, Math.ceil(visibleN / 12));
-  const xLabelRotate = visibleN > 12;
+  // 永遠旋轉，避免標籤重疊或被裁切
 
   const toPath = (data) => {
     let d = '';
@@ -302,25 +303,84 @@ const LineChart = ({ series, xLabels, yMax: yMaxProp, warnThreshold, dangerThres
   const showTooltip = hoverIdx != null && !isDragging
     && xPos(hoverIdx) >= PAD.left && xPos(hoverIdx) <= PAD.left + innerW;
 
+  /* ── PDF 下載 ── */
+  const handleDownloadPDF = () => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const serializer = new XMLSerializer();
+    const svgClone = svg.cloneNode(true);
+    const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bgRect.setAttribute('x', '0'); bgRect.setAttribute('y', '0');
+    bgRect.setAttribute('width', String(W)); bgRect.setAttribute('height', String(H));
+    bgRect.setAttribute('fill', '#111827');
+    svgClone.insertBefore(bgRect, svgClone.firstChild);
+    const svgStr = serializer.serializeToString(svgClone);
+    const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = W * scale; canvas.height = H * scale;
+      const ctx2d = canvas.getContext('2d');
+      ctx2d.scale(scale, scale);
+      ctx2d.drawImage(img, 0, 0, W, H);
+      URL.revokeObjectURL(svgUrl);
+      canvas.toBlob(blob => {
+        const imgUrl = URL.createObjectURL(blob);
+        const win = window.open('', '_blank');
+        if (!win) { URL.revokeObjectURL(imgUrl); return; }
+        const title = chartTitle || '誤差折線圖';
+        const noteHtml = baseHourNote
+          ? `<p style="color:#555;font-size:12px;margin:4px 0 16px;">※ ${baseHourNote}</p>`
+          : '';
+        win.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:#fff;display:flex;flex-direction:column;align-items:center;padding:40px 24px;font-family:sans-serif;}
+  h2{font-size:18px;font-weight:800;color:#111;margin-bottom:4px;}
+  img{max-width:100%;border:1px solid #e5e7eb;border-radius:8px;margin-top:4px;}
+  @media print{body{padding:16px;}@page{size:A4 landscape;margin:16mm;}}
+</style></head><body>
+<h2>${title}</h2>${noteHtml}
+<img src="${imgUrl}" />
+<script>window.onload=function(){setTimeout(function(){window.print();},400);}<\/script>
+</body></html>`);
+        win.document.close();
+      }, 'image/png');
+    };
+    img.src = svgUrl;
+  };
+
   return (
     <div className="relative">
-      {/* Reset 按鈕（縮放後才出現） */}
-      {isZoomed && (
+      {/* 右上工具列：PDF 下載（永遠顯示）+ 重設（縮放後才出現，在 PDF 按鈕下方） */}
+      <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1.5">
         <button
-          onClick={() => setView(null)}
-          className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/[0.06] border border-white/15 text-[11px] font-bold text-white/70 hover:bg-white/[0.1] hover:text-white transition-all backdrop-blur-sm"
-          title="重設縮放（雙擊圖表也可）"
+          onClick={handleDownloadPDF}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/30 text-[11px] font-bold text-primary hover:bg-primary/20 transition-all backdrop-blur-sm"
+          title="下載 PDF"
         >
-          <span className="material-symbols-outlined !text-sm">restart_alt</span>
-          重設
+          <span className="material-symbols-outlined !text-sm">picture_as_pdf</span>
+          下載 PDF
         </button>
-      )}
+        {isZoomed && (
+          <button
+            onClick={() => setView(null)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/[0.06] border border-white/15 text-[11px] font-bold text-white/70 hover:bg-white/[0.1] hover:text-white transition-all backdrop-blur-sm"
+            title="重設縮放（雙擊圖表也可）"
+          >
+            <span className="material-symbols-outlined !text-sm">restart_alt</span>
+            重設
+          </button>
+        )}
+      </div>
 
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
         className="w-full select-none"
-        style={{ maxHeight: 340, cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
+        style={{ maxHeight: 420, cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -394,19 +454,25 @@ const LineChart = ({ series, xLabels, yMax: yMaxProp, warnThreshold, dangerThres
           </text>
         ))}
 
-        {/* X 軸 label */}
+        {/* X 軸 label：永遠 -45° 旋轉，錨點在軸底，文字向左上展開不超出 viewBox */}
         {xLabels.map((label, i) => {
           if (i < visStart || i > visEnd) return null;
           if ((i - visStart) % xLabelStep !== 0 && i !== visEnd) return null;
           const x = xPos(i);
           if (x < PAD.left - 1 || x > PAD.left + innerW + 1) return null;
-          return xLabelRotate ? (
-            <text key={i} x={x} y={H - 12} textAnchor="end" fontSize={10} fill="rgba(255,255,255,0.4)" fontFamily="monospace"
-              transform={`rotate(-30,${x},${H - 12})`}>
-              {label}
-            </text>
-          ) : (
-            <text key={i} x={x} y={H - 14} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.4)" fontFamily="monospace">
+          // 軸線底端 y 座標
+          const axisY = PAD.top + innerH;
+          return (
+            <text
+              key={i}
+              x={x}
+              y={axisY + 6}
+              textAnchor="end"
+              fontSize={10}
+              fill="rgba(255,255,255,0.4)"
+              fontFamily="monospace"
+              transform={`rotate(-45,${x},${axisY + 6})`}
+            >
               {label}
             </text>
           );
@@ -421,6 +487,22 @@ const LineChart = ({ series, xLabels, yMax: yMaxProp, warnThreshold, dangerThres
           transform={`rotate(-90,14,${PAD.top + innerH / 2})`}>
           {axisLabel}
         </text>
+
+        {/* 圖表標題 */}
+        {chartTitle && (
+          <text x={PAD.left + innerW / 2} y={16} textAnchor="middle" fontSize={12} fontWeight="bold"
+            fill="rgba(255,255,255,0.7)" fontFamily="sans-serif">
+            {chartTitle}
+          </text>
+        )}
+
+        {/* 基準時刻標註（連續時段） */}
+        {baseHourNote && (
+          <text x={PAD.left + innerW} y={H - 4} textAnchor="end" fontSize={9}
+            fill="rgba(255,255,255,0.28)" fontFamily="monospace">
+            ※ {baseHourNote}
+          </text>
+        )}
 
         {/* Tooltip（畫在 clip 外避免被截掉） */}
         {showTooltip && (
@@ -736,8 +818,16 @@ export default function ErrorAnalysisPage({
 
     const xLabels = filteredRows.map(row => {
       const dt = parseDatetime(getRowDatetime(row));
-      if (dt) return `${dt.month}/${dt.day} ${String(dt.hour).padStart(2, '0')}h`;
-      return String(getRowHour(row) ?? '');
+      if (timeMode === 'range') {
+        // 連續時段：只顯示年/月/日，資料以每日 05:00 為基準
+        if (dt) return `${dt.year}/${String(dt.month).padStart(2,'0')}/${String(dt.day).padStart(2,'0')}`;
+        return String(getRowHour(row) ?? '');
+      } else {
+        // 特定時間點：顯示 月/日 時:00
+        if (dt) return `${dt.month}/${dt.day} ${String(dt.hour ?? 5).padStart(2,'0')}:00`;
+        const h = getRowHour(row);
+        return h !== null ? `${String(h).padStart(2,'0')}:00` : '';
+      }
     });
 
     const series = seriesMeta.map(sm => ({
@@ -1130,6 +1220,8 @@ export default function ErrorAnalysisPage({
                     dangerThreshold={thresholds.danger}
                     unit={thresholds.unit}
                     axisLabel={thresholds.axisLabel}
+                    chartTitle={timeMode === 'range' ? '連續時段誤差折線圖' : '特定時間點誤差折線圖'}
+                    baseHourNote={timeMode === 'range' ? '本圖以每日 05:00 資料為基準，橫軸顯示年/月/日' : null}
                   />
                 )}
               </div>

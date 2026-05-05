@@ -748,6 +748,21 @@ export default function ErrorAnalysisPage({
     }
   }, [allYearMonths]);
 
+  /* ── 所有可用日期（YYYY-MM-DD）清單 ── */
+  const allDays = useMemo(() => {
+    const set = new Set();
+    allRows.forEach(row => {
+      const dt = parseDatetime(getRowDatetime(row));
+      if (dt && dt.year && dt.month && dt.day) {
+        set.add(`${dt.year}-${String(dt.month).padStart(2, '0')}-${String(dt.day).padStart(2, '0')}`);
+      }
+    });
+    return [...set].sort();
+  }, [allRows]);
+
+  /* ── 日期選擇：null = 不限定（顯示全時段折線），字串 = 看當日各時段 ── */
+  const [selectedDay, setSelectedDay] = useState(null);
+
   /* ── Points mode ── */
   const [pointHour, setPointHour] = useState('');
   const [pointDay, setPointDay] = useState('');
@@ -777,6 +792,16 @@ export default function ErrorAnalysisPage({
     if (!allRows.length || !errCols.length) return [];
 
     if (timeMode === 'range') {
+      // 選了特定日 → 只看當天，後面 chartData 會改用時段為 X 軸
+      if (selectedDay) {
+        return allRows.filter(row => {
+          const dt = parseDatetime(getRowDatetime(row));
+          if (!dt || !dt.year) return false;
+          const d = `${dt.year}-${String(dt.month).padStart(2, '0')}-${String(dt.day).padStart(2, '0')}`;
+          return d === selectedDay;
+        });
+      }
+
       if (!rangeStart || !rangeEnd) return allRows;
       if (rangeStart === '小時資料') return allRows;
 
@@ -810,7 +835,7 @@ export default function ErrorAnalysisPage({
         return true;
       });
     });
-  }, [allRows, timeMode, rangeStart, rangeEnd, addedPoints, errCols]);
+  }, [allRows, timeMode, rangeStart, rangeEnd, selectedDay, addedPoints, errCols]);
 
   /* ── 折線圖資料 ── */
   const chartData = useMemo(() => {
@@ -819,6 +844,11 @@ export default function ErrorAnalysisPage({
     const xLabels = filteredRows.map(row => {
       const dt = parseDatetime(getRowDatetime(row));
       if (timeMode === 'range') {
+        // 選了特定日 → X 軸改顯示時段
+        if (selectedDay) {
+          const h = dt?.hour ?? getRowHour(row);
+          return h !== null ? `${String(h).padStart(2, '0')}:00` : '';
+        }
         // 連續時段：只顯示年/月/日，資料以每日 05:00 為基準
         if (dt) return `${dt.year}/${String(dt.month).padStart(2,'0')}/${String(dt.day).padStart(2,'0')}`;
         return String(getRowHour(row) ?? '');
@@ -826,7 +856,7 @@ export default function ErrorAnalysisPage({
         // 特定時間點：顯示 月/日 時:00
         if (dt) return `${dt.month}/${dt.day} ${String(dt.hour ?? 5).padStart(2,'0')}:00`;
         const h = getRowHour(row);
-        return h !== null ? `${String(h).padStart(2,'0')}:00` : '';
+        return h !== null ? `${String(h).padStart(2,'00')}:00` : '';
       }
     });
 
@@ -843,7 +873,7 @@ export default function ErrorAnalysisPage({
     }));
 
     return { xLabels, series };
-  }, [filteredRows, seriesMeta]);
+  }, [filteredRows, seriesMeta, timeMode, selectedDay]);
 
   /* ── 選中模型的摘要指標（折線圖頂部卡片） ── */
   const focusStats = useMemo(() => {
@@ -1050,35 +1080,73 @@ export default function ErrorAnalysisPage({
 
                 {/* 對應控件 */}
                 {timeMode === 'range' ? (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <select value={rangeStart} onChange={e => setRangeStart(e.target.value)}
-                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-primary/50 focus:outline-none min-w-[120px]">
-                        {allYearMonths.map(ym => (
-                          <option key={ym} value={ym} className="bg-[#111] text-white">{ym}</option>
+                  <div className="space-y-3">
+                    {/* 年月區間選擇 */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <select value={rangeStart} onChange={e => { setRangeStart(e.target.value); setSelectedDay(null); }}
+                          className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-primary/50 focus:outline-none min-w-[120px]">
+                          {allYearMonths.map(ym => (
+                            <option key={ym} value={ym} className="bg-[#111] text-white">{ym}</option>
+                          ))}
+                        </select>
+                        <span className="material-symbols-outlined !text-base text-white/30">arrow_forward</span>
+                        <select value={rangeEnd} onChange={e => { setRangeEnd(e.target.value); setSelectedDay(null); }}
+                          className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-primary/50 focus:outline-none min-w-[120px]">
+                          {allYearMonths.filter(ym => ym >= rangeStart).map(ym => (
+                            <option key={ym} value={ym} className="bg-[#111] text-white">{ym}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="h-5 w-px bg-white/10 mx-1" />
+                      <div className="flex gap-1.5 flex-wrap">
+                        {[
+                          { label: '全部', fn: () => { setRangeStart(allYearMonths[0]); setRangeEnd(allYearMonths[allYearMonths.length - 1]); setSelectedDay(null); } },
+                          { label: '近 3 月', fn: () => { const e = allYearMonths[allYearMonths.length - 1]; setRangeEnd(e); setRangeStart(allYearMonths[Math.max(0, allYearMonths.length - 3)]); setSelectedDay(null); } },
+                          { label: '近 6 月', fn: () => { const e = allYearMonths[allYearMonths.length - 1]; setRangeEnd(e); setRangeStart(allYearMonths[Math.max(0, allYearMonths.length - 6)]); setSelectedDay(null); } },
+                        ].map(({ label, fn }) => (
+                          <button key={label} onClick={fn}
+                            className="px-3 py-1.5 text-[10px] font-bold rounded-lg border border-white/10 text-white/40 hover:bg-white/5 hover:text-white/70 transition-all">
+                            {label}
+                          </button>
                         ))}
-                      </select>
-                      <span className="material-symbols-outlined !text-base text-white/30">arrow_forward</span>
-                      <select value={rangeEnd} onChange={e => setRangeEnd(e.target.value)}
-                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-primary/50 focus:outline-none min-w-[120px]">
-                        {allYearMonths.filter(ym => ym >= rangeStart).map(ym => (
-                          <option key={ym} value={ym} className="bg-[#111] text-white">{ym}</option>
-                        ))}
-                      </select>
+                      </div>
                     </div>
-                    <div className="h-5 w-px bg-white/10 mx-1" />
-                    <div className="flex gap-1.5 flex-wrap">
-                      {[
-                        { label: '全部', fn: () => { setRangeStart(allYearMonths[0]); setRangeEnd(allYearMonths[allYearMonths.length - 1]); } },
-                        { label: '近 3 月', fn: () => { const e = allYearMonths[allYearMonths.length - 1]; setRangeEnd(e); setRangeStart(allYearMonths[Math.max(0, allYearMonths.length - 3)]); } },
-                        { label: '近 6 月', fn: () => { const e = allYearMonths[allYearMonths.length - 1]; setRangeEnd(e); setRangeStart(allYearMonths[Math.max(0, allYearMonths.length - 6)]); } },
-                      ].map(({ label, fn }) => (
-                        <button key={label} onClick={fn}
-                          className="px-3 py-1.5 text-[10px] font-bold rounded-lg border border-white/10 text-white/40 hover:bg-white/5 hover:text-white/70 transition-all">
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+
+                    {/* 日區間選擇器（看當日各時段） */}
+                    {allDays.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-white/[0.06]">
+                        <span className="text-[10px] text-white/40 font-bold uppercase tracking-widest flex items-center gap-1">
+                          <span className="material-symbols-outlined !text-xs">today</span>
+                          單日時段
+                        </span>
+                        <select
+                          value={selectedDay || ''}
+                          onChange={e => setSelectedDay(e.target.value || null)}
+                          className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-primary/50 focus:outline-none min-w-[140px]"
+                        >
+                          <option value="" className="bg-[#111] text-white/50">— 不指定（顯示全時段）—</option>
+                          {allDays.map(d => (
+                            <option key={d} value={d} className="bg-[#111] text-white">{d}</option>
+                          ))}
+                        </select>
+                        {selectedDay && (
+                          <button
+                            onClick={() => setSelectedDay(null)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-[11px] font-bold text-primary hover:bg-primary/20 transition-all"
+                          >
+                            <span className="material-symbols-outlined !text-xs">close</span>
+                            清除
+                          </button>
+                        )}
+                        {selectedDay && (
+                          <span className="text-[11px] text-white/40 font-mono">
+                            <span className="material-symbols-outlined !text-xs align-middle mr-0.5 text-primary">info</span>
+                            折線圖將顯示 <span className="text-primary font-bold">{selectedDay}</span> 各時段誤差
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -1220,8 +1288,20 @@ export default function ErrorAnalysisPage({
                     dangerThreshold={thresholds.danger}
                     unit={thresholds.unit}
                     axisLabel={thresholds.axisLabel}
-                    chartTitle={timeMode === 'range' ? '連續時段誤差折線圖' : '特定時間點誤差折線圖'}
-                    baseHourNote={timeMode === 'range' ? '本圖以每日 05:00 資料為基準，橫軸顯示年/月/日' : null}
+                    chartTitle={
+                      timeMode === 'range'
+                        ? selectedDay
+                          ? `${selectedDay} 各時段誤差折線圖`
+                          : '連續時段誤差折線圖'
+                        : '特定時間點誤差折線圖'
+                    }
+                    baseHourNote={
+                      timeMode === 'range' && !selectedDay
+                        ? '本圖以每日 05:00 資料為基準，橫軸顯示年/月/日'
+                        : timeMode === 'range' && selectedDay
+                        ? `顯示 ${selectedDay} 當日各時段誤差，橫軸為時段`
+                        : null
+                    }
                   />
                 )}
               </div>

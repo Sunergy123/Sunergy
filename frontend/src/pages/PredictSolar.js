@@ -59,7 +59,7 @@ const OverallStatus = ({ avgError, label }) => {
   const v = Number(avgError);
   let cfg = { color: 'text-green-400', bg: 'bg-green-500', shadow: 'shadow-[0_0_15px_rgba(34,197,94,0.4)]', label: '發電正常', desc: '預測與實際高度吻合' };
   if (v > 15) cfg = { color: 'text-red-400', bg: 'bg-red-500', shadow: 'shadow-[0_0_15px_rgba(239,68,68,0.4)]', label: '發電異常', desc: '偏差過大，請檢查設備' };
-  else if (v > 5) cfg = { color: 'text-yellow-400', bg: 'bg-yellow-500', shadow: 'shadow-[0_0_15px_rgba(234,179,8,0.4)]', label: '需留意', desc: '環境干擾或輕微積塵' };
+  else if (v > 5) cfg = { color: 'text-yellow-400', bg: 'bg-yellow-500', shadow: 'shadow-[0_0_15px_rgba(234,179,8,0.4)]', label: '需留意', desc: '可能有些微環境干擾' };
 
   return (
     <div className="flex items-center gap-3">
@@ -116,12 +116,26 @@ export default function PredictSolar({
 }) {
   const [file, setFile] = useState(null);
   const [selectedModelIds, setSelectedModelIds] = useState([]);
+  // 懶人模式推薦：{ model_id, model_type, wmape } | null
+  const [lazyRecommendation, setLazyRecommendation] = useState(null);
 
   useEffect(() => {
     const modelId = localStorage.getItem("predict_model_id");
     if (modelId) {
       setSelectedModelIds([modelId]);
       localStorage.removeItem("predict_model_id");
+    }
+    // 讀懶人模式推薦資訊（顯示推薦徽章用）
+    const winnerId = localStorage.getItem("lazyModeWinnerId");
+    const winnerInfoRaw = localStorage.getItem("lazyModeWinnerInfo");
+    if (winnerId) {
+      let info = { model_id: winnerId };
+      try {
+        if (winnerInfoRaw) info = { ...info, ...JSON.parse(winnerInfoRaw) };
+      } catch (_) { /* ignore */ }
+      setLazyRecommendation(info);
+      localStorage.removeItem("lazyModeWinnerId");
+      localStorage.removeItem("lazyModeWinnerInfo");
     }
   }, []);
 
@@ -226,7 +240,7 @@ export default function PredictSolar({
     }
   };
 
-  const navProps = { onNavigateToDashboard, onNavigateToTrain, onNavigateToPredict, onNavigateToSites, onNavigateToModelMgmt, onNavigateToChangePassword,onLogout };
+  const navProps = { onNavigateToDashboard, onNavigateToTrain, onNavigateToPredict, onNavigateToSites, onNavigateToModelMgmt, onNavigateToChangePassword, onLogout };
 
   const displayCols = result ? result.columns.filter(col => {
     if (errorMode === 'pct') return !col.startsWith('eabs_') && col !== 'error_abs';
@@ -585,12 +599,15 @@ export default function PredictSolar({
                     })
                     .map(m => {
                       const isSelected = selectedModelIds.includes(String(m.model_id));
+                      const isRecommended = lazyRecommendation && String(lazyRecommendation.model_id) === String(m.model_id);
                       return (
                         <label
                           key={m.model_id}
-                          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all border ${isSelected
-                            ? 'bg-primary/10 border-primary/30 shadow-[0_0_12px_rgba(242,204,13,0.08)]'
-                            : 'border-white/5 hover:bg-white/[0.03] hover:border-white/10'
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all border ${isRecommended
+                            ? 'bg-green-500/[0.08] border-green-400/40 shadow-[0_0_12px_rgba(34,197,94,0.12)]'
+                            : isSelected
+                              ? 'bg-primary/10 border-primary/30 shadow-[0_0_12px_rgba(242,204,13,0.08)]'
+                              : 'border-white/5 hover:bg-white/[0.03] hover:border-white/10'
                             }`}
                         >
                           <input
@@ -600,12 +617,24 @@ export default function PredictSolar({
                             className="accent-primary size-4 rounded"
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className={`text-xs font-black px-2 py-0.5 rounded ${isSelected ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/50'
                                 }`}>
                                 {m.model_type}
                               </span>
                               <span className="text-xs text-white/30 font-mono">#{m.model_id}</span>
+                              {isRecommended && (
+                                <span
+                                  className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold"
+                                  title={
+                                    lazyRecommendation?.wmape != null
+                                      ? `懶人模式推薦：WMAPE ${Number(lazyRecommendation.wmape).toFixed(4)}（三模型中最低）`
+                                      : '懶人模式推薦'
+                                  }
+                                >
+                                  ★ 推薦
+                                </span>
+                              )}
                               {m.site_name && (
                                 <span className="text-[10px] text-cyan-400/70 bg-cyan-400/10 px-1.5 py-0.5 rounded truncate max-w-[100px]" title={m.site_name}>
                                   {m.site_name}
@@ -681,7 +710,7 @@ export default function PredictSolar({
                           <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest">差異</p>
                           <div className="flex items-baseline gap-1">
                             <span className={`text-lg font-black font-mono ${diff > 0 ? 'text-orange-400' : diff < 0 ? 'text-cyan-400' : 'text-white/40'}`}>
-                              {diff > 0 ? '+' : ''}{diff.toLocaleString(undefined, {maximumFractionDigits: 2})}
+                              {diff > 0 ? '+' : ''}{diff.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                             </span>
                             <span className="text-xs font-bold text-white/40">kWh</span>
                           </div>
@@ -768,7 +797,7 @@ export default function PredictSolar({
                           className={`px-3 py-2 text-sm font-bold transition-all ${errorMode === 'pct'
                             ? 'bg-primary/15 text-primary'
                             : 'text-white/40 hover:bg-white/5 hover:text-white/60'
-                          }`}
+                            }`}
                         >
                           %
                         </button>
@@ -778,7 +807,7 @@ export default function PredictSolar({
                           className={`px-3 py-2 text-sm font-bold transition-all ${errorMode === 'abs'
                             ? 'bg-primary/15 text-primary'
                             : 'text-white/40 hover:bg-white/5 hover:text-white/60'
-                          }`}
+                            }`}
                         >
                           kW
                         </button>

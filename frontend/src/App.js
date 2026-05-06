@@ -218,7 +218,17 @@ function App() {
         return <DataVariableGuide {...commonNavbarProps} onBack={() => navigate('dashboard')} onNext={() => navigate('start-predict')} />;
 
       case 'start-predict': // (2) 上傳資料
-        return <StartPredict {...commonNavbarProps} selectedSite={selectedSite} fromSite={fromSite} onBack={() => navigate('data-guide')} onNext={() => navigate('data-cleaning')} />;
+        return <StartPredict
+          {...commonNavbarProps}
+          selectedSite={selectedSite}
+          fromSite={fromSite}
+          onBack={() => navigate('data-guide')}
+          onNext={() => navigate('data-cleaning')}
+          onLazyFinish={() => {
+            setPredictFrom('training');
+            navigate('predict-solar');
+          }}
+        />;
       
       case 'data-cleaning':
         return <DataCleaning {...commonNavbarProps} 

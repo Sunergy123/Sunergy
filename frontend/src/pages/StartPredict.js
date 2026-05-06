@@ -6,11 +6,12 @@ const API_BASE_URL = "http://127.0.0.1:8000";
 export default function StartPredict({
   onBack,
   onNext,
-  onNavigateToDashboard, 
-  onNavigateToTrain,     
+  onLazyFinish,
+  onNavigateToDashboard,
+  onNavigateToTrain,
   onNavigateToPredict,
   onNavigateToSites,
-  onNavigateToModelMgmt, 
+  onNavigateToModelMgmt,
   onNavigateToChangePassword,
   onLogout,
   restoredFromVisualization = false,
@@ -37,6 +38,12 @@ export default function StartPredict({
   const [processing, setProcessing] = useState(false);
   const [siteError, setSiteError] = useState("");
   const [fileError, setFileError] = useState("");
+
+  // 懶人模式（一鍵自動：清洗 → 訓練三模型 → 推薦最低 WMAPE → 進預測頁）
+  const [lazyMode, setLazyMode] = useState(false);
+  const [lazyStep, setLazyStep] = useState("idle"); // idle | cleaning | training | done | error
+  const [lazyError, setLazyError] = useState("");
+  const [lazyBest, setLazyBest] = useState(null);   // { model_id, model_type, wmape }
 
   const getUserId = () => {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -144,6 +151,155 @@ export default function StartPredict({
     }
   };
 
+  /* ==================== 懶人模式：自動清洗 + 訓練三模型 ==================== */
+  const buildDefaultTrainParams = () => {
+    // 預設超參數範圍與 ModelTraining.js 一致；策略採 bayes，trials=30
+    const trials = 30;
+    return {
+      XGBoost: {
+        n_estimators: { start: 100, end: 500, step: 100 },
+        max_depth: { start: 3, end: 8, step: 1 },
+        learning_rate: { start: 0.01, end: 0.2, step: 0.01 },
+        subsample: { start: 0.7, end: 1.0, step: 0.05 },
+        colsample_bytree: { start: 0.7, end: 1.0, step: 0.05 },
+        min_child_weight: { start: 1, end: 5, step: 1 },
+        reg_lambda: { start: 0.5, end: 2, step: 0.1 },
+        reg_alpha: { start: 0, end: 1, step: 0.1 },
+        _max_combinations: 100,
+        _trials: trials,
+      },
+      SVR: {
+        C: { start: 1, end: 50, step: 10 },
+        epsilon: { start: 0.01, end: 0.5, step: 0.05 },
+        gamma: { values: ["scale", "auto"] },
+        _trials: trials,
+      },
+      RandomForest: {
+        n_estimators: { start: 100, end: 300, step: 50 },
+        max_depth: { start: 5, end: 15, step: 1 },
+        _trials: trials,
+      },
+    };
+  };
+
+  const runLazyMode = async ({ siteIdNum, fileNameStr, uploadIdNum }) => {
+    setLazyError("");
+    setLazyBest(null);
+
+    // ── Step 1: 自動清洗 ──
+    try {
+      setLazyStep("cleaning");
+      const cleanRes = await fetch("http://127.0.0.1:8000/save-cleaned-data/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          site_id: siteIdNum,
+          file_name: fileNameStr,
+          upload_id: uploadIdNum,
+          apply_outlier: true,
+          apply_gi_tm: true,
+          remove_outliers: true,
+          outlier_method: "iqr_comprehensive",
+          iqr_factor: 2.0,
+          z_threshold: 3.0,
+          isolation_contamination: 0.05,
+        }),
+      });
+      if (!cleanRes.ok) {
+        const text = await cleanRes.text();
+        throw new Error(`資料清洗失敗：${text || cleanRes.status}`);
+      }
+      const cleanJson = await cleanRes.json();
+      if (!cleanJson.after_id) throw new Error("清洗回傳缺少 after_id");
+      localStorage.setItem("afterDataId", cleanJson.after_id);
+
+      // ── Step 2: 訓練三模型 ──
+      setLazyStep("training");
+      const trainRes = await fetch("http://127.0.0.1:8000/train/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_type: "cleaned",
+          source_id: Number(cleanJson.after_id),
+          split_ratio: 0.8,
+          models: ["XGBoost", "SVR", "RandomForest"],
+          strategy: "bayes",
+          params: buildDefaultTrainParams(),
+          device: "auto",
+        }),
+      });
+      const trainJson = await trainRes.json();
+      if (!trainRes.ok) {
+        throw new Error(trainJson?.detail || "模型訓練失敗");
+      }
+      const results = trainJson.results || {};
+      const okList = Object.values(results).filter(
+        (r) => r.status === "ok" && r.wmape !== undefined && r.wmape !== null
+      );
+      if (okList.length === 0) {
+        throw new Error("三個模型皆訓練失敗，請檢查資料品質後重試");
+      }
+
+      // ── Step 3: 挑 WMAPE 最低者作為推薦 ──
+      const winner = okList.reduce((best, r) =>
+        Number(r.wmape) < Number(best.wmape) ? r : best
+      );
+      // /train/run 回應不含 model_id，需另外查 /train/trained-models。
+      // /train/trained-models 已按 trained_at desc 排序、且只回傳該使用者的模型，
+      // 所以 model_type 相符的第一筆即為剛訓練好的紀錄。
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      const userId = user.user_id;
+      let winnerModelId = null;
+      if (userId) {
+        try {
+          const listRes = await fetch(
+            `http://127.0.0.1:8000/train/trained-models?user_id=${userId}`
+          );
+          const list = await listRes.json();
+          if (Array.isArray(list)) {
+            const matched = list
+              .filter((m) => m.model_type === winner.id)
+              .sort(
+                (a, b) =>
+                  new Date(b.trained_at || 0).getTime() -
+                  new Date(a.trained_at || 0).getTime()
+              );
+            if (matched.length > 0) winnerModelId = matched[0].model_id;
+          }
+        } catch (e) {
+          console.error("trained-models lookup failed:", e);
+        }
+      }
+      if (!winnerModelId) {
+        throw new Error("找不到推薦模型的 ID，請改用手動模式重新訓練");
+      }
+
+      const bestInfo = {
+        model_id: winnerModelId,
+        model_type: winner.id,
+        wmape: Number(winner.wmape),
+      };
+      setLazyBest(bestInfo);
+      // 給 PredictSolar 預選 + 顯示推薦徽章用
+      localStorage.setItem("predict_model_id", String(winnerModelId));
+      localStorage.setItem("lazyModeWinnerId", String(winnerModelId));
+      localStorage.setItem(
+        "lazyModeWinnerInfo",
+        JSON.stringify(bestInfo)
+      );
+
+      setLazyStep("done");
+      // 短暫顯示「完成」訊息後跳轉
+      setTimeout(() => {
+        if (typeof onLazyFinish === "function") onLazyFinish();
+      }, 1200);
+    } catch (err) {
+      console.error("lazy mode error:", err);
+      setLazyError(err.message || "懶人模式執行失敗");
+      // 不切到 "error" 狀態，讓 lazyStep 停在失敗的階段；UI 用 lazyError 旗標標示為失敗
+    }
+  };
+
   /* ==================== 上傳檔案 ==================== */
   const handleFileSelect = async (event) => {
     const uploadedFile = event.target.files[0];
@@ -232,6 +388,18 @@ export default function StartPredict({
 
     // 原本的也保留
     localStorage.setItem("lastSelectedSite", selectedSite);
+
+    // 懶人模式：上傳成功後直接接力清洗 + 訓練
+    if (lazyMode) {
+      // 不阻塞 finally 的 setProcessing(false)；以 microtask 排程
+      Promise.resolve().then(() =>
+        runLazyMode({
+          siteIdNum: Number(selectedSite),
+          fileNameStr: json.file_name,
+          uploadIdNum: Number(json.upload_id),
+        })
+      );
+    }
     } catch (err) {
       console.error(err);
       setFileError("無法連線到伺服器");
@@ -376,6 +544,30 @@ export default function StartPredict({
           )}
         </div>
 
+        {/* Lazy Mode Toggle */}
+        <div className="rounded-xl border border-primary/30 bg-primary/[.04] p-5 sm:p-6">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-1 size-5 accent-primary rounded"
+              checked={lazyMode}
+              onChange={(e) => setLazyMode(e.target.checked)}
+            />
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined !text-xl text-primary">auto_awesome</span>
+                <span className="text-base font-bold text-primary">懶人模式（一鍵自動）</span>
+              </div>
+              <p className="text-sm text-white/60 mt-1 leading-relaxed">
+                勾選後，上傳資料即自動套用系統預設方法清洗、並用三種模型（XGBoost / SVR / RandomForest）以貝葉斯優化訓練，最後挑選 WMAPE 最低者作為推薦模型，直接進入預測頁。
+              </p>
+              <p className="text-xs text-white/40 mt-1">
+                適合不熟悉資料科學的使用者；訓練約需數分鐘，請保持頁面開啟。
+              </p>
+            </div>
+          </label>
+        </div>
+
         {/* Step 2 */}
         <div className="rounded-xl border border-white/10 bg-white/[.02] p-6 sm:p-8">
           <h2 className="text-xl font-bold mb-6">步驟二：上傳數據檔案 (請確認檔案含有date、hour、GI、TM、EAC必要特徵)</h2>
@@ -465,6 +657,127 @@ export default function StartPredict({
           </button>
         </div>
       </div>
+
+      {/* 懶人模式：進度遮罩 */}
+      {lazyStep !== "idle" && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="w-full max-w-lg rounded-2xl border border-primary/30 bg-background-dark p-8 shadow-2xl">
+            <div className="flex items-center gap-3 mb-6">
+              <span className="material-symbols-outlined !text-3xl text-primary">auto_awesome</span>
+              <h3 className="text-xl font-bold text-white">懶人模式執行中</h3>
+            </div>
+
+            <ol className="space-y-4">
+              <LazyStepRow label="上傳資料" status="done" />
+              <LazyStepRow
+                label="自動清洗資料（IQR 綜合法）"
+                status={
+                  lazyStep === "cleaning"
+                    ? (lazyError ? "failed" : "active")
+                    : ["training", "done"].includes(lazyStep)
+                    ? "done"
+                    : "pending"
+                }
+              />
+              <LazyStepRow
+                label="貝葉斯優化訓練三模型（XGBoost / SVR / RandomForest）"
+                status={
+                  lazyStep === "training"
+                    ? (lazyError ? "failed" : "active")
+                    : lazyStep === "done"
+                    ? "done"
+                    : "pending"
+                }
+                hint="此步驟需要數分鐘，請耐心等候..."
+              />
+              <LazyStepRow
+                label={
+                  lazyBest
+                    ? `推薦：${lazyBest.model_type}（WMAPE ${lazyBest.wmape.toFixed(4)}），準備進入預測頁...`
+                    : "挑選最低 WMAPE 模型並進入預測頁"
+                }
+                status={lazyStep === "done" ? "done" : "pending"}
+              />
+            </ol>
+
+            {lazyError && (
+              <div className="mt-6 p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm">
+                <p className="font-bold mb-1">執行失敗</p>
+                <p className="text-red-200/90 break-all">{lazyError}</p>
+                <div className="mt-4 flex gap-2 justify-end">
+                  <button
+                    onClick={() => {
+                      // 退回手動模式：關閉遮罩、保留已上傳資料、取消勾選
+                      setLazyStep("idle");
+                      setLazyError("");
+                      setLazyBest(null);
+                      setLazyMode(false);
+                    }}
+                    className="px-4 py-1.5 rounded-lg border border-white/20 text-white/80 hover:bg-white/10 text-sm"
+                  >
+                    改用手動模式
+                  </button>
+                  <button
+                    onClick={() => {
+                      const uploadId = Number(localStorage.getItem("lastDataId"));
+                      const fname = fileName || localStorage.getItem("lastUploadedFile");
+                      if (!uploadId || !fname || !selectedSite) {
+                        setLazyStep("idle");
+                        setLazyError("");
+                        return;
+                      }
+                      setLazyError("");
+                      runLazyMode({
+                        siteIdNum: Number(selectedSite),
+                        fileNameStr: fname,
+                        uploadIdNum: uploadId,
+                      });
+                    }}
+                    className="px-4 py-1.5 rounded-lg bg-primary text-black font-bold text-sm hover:opacity-90"
+                  >
+                    重試
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+/* ── 懶人模式步驟列 ── */
+function LazyStepRow({ label, status, hint }) {
+  const icon =
+    status === "done" ? (
+      <span className="material-symbols-outlined !text-xl text-green-400">check_circle</span>
+    ) : status === "active" ? (
+      <span className="size-5 border-2 border-white/20 border-t-primary rounded-full animate-spin" />
+    ) : status === "failed" ? (
+      <span className="material-symbols-outlined !text-xl text-red-400">cancel</span>
+    ) : (
+      <span className="size-5 rounded-full border border-white/20" />
+    );
+
+  const textColor =
+    status === "done"
+      ? "text-white"
+      : status === "active"
+      ? "text-primary"
+      : status === "failed"
+      ? "text-red-300"
+      : "text-white/40";
+
+  return (
+    <li className="flex items-start gap-3">
+      <div className="mt-0.5">{icon}</div>
+      <div className="flex-1">
+        <p className={`text-sm font-medium ${textColor}`}>{label}</p>
+        {status === "active" && hint && (
+          <p className="text-xs text-white/40 mt-0.5">{hint}</p>
+        )}
+      </div>
+    </li>
   );
 }

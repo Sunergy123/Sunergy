@@ -9,6 +9,7 @@ export default function Sites({
   onNavigateToSites,
   onLogout,
   onNavigateToModelMgmt,
+  onNavigateToRealtime,
   onNavigateToTrain,
   onOpenCreateSite,
   onOpenEditSite,
@@ -111,6 +112,7 @@ export default function Sites({
         onNavigateToPredict={onNavigateToPredict}
         onNavigateToSites={onNavigateToSites}
         onNavigateToTrain={onNavigateToTrain}
+        onNavigateToRealtime={onNavigateToRealtime}
         onNavigateToModelMgmt={onNavigateToModelMgmt}
         onNavigateToChangePassword={onNavigateToChangePassword}
         onLogout={onLogout}

@@ -1,15 +1,16 @@
 // src/components/Navbar.js
 import React, { useState } from 'react';
 
-export default function Navbar({ 
-  activePage, 
-  onNavigateToDashboard, 
-  onNavigateToTrain, 
-  onNavigateToPredict, 
-  onNavigateToSites, 
-  onNavigateToModelMgmt, 
+export default function Navbar({
+  activePage,
+  onNavigateToDashboard,
+  onNavigateToTrain,
+  onNavigateToPredict,
+  onNavigateToRealtime,
+  onNavigateToSites,
+  onNavigateToModelMgmt,
   onNavigateToChangePassword,
-  onLogout 
+  onLogout
 }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -78,7 +79,14 @@ export default function Navbar({
             <button onClick={onNavigateToPredict} className={getLinkClass('predict-solar')} >
               預測發電量
             </button>
-            
+
+            {/* 3.5 即時預測 */}
+            {onNavigateToRealtime && (
+              <button onClick={onNavigateToRealtime} className={getLinkClass('realtime-predict')} >
+                即時預測
+              </button>
+            )}
+
             {/* 4. 案場管理 */}
             <button onClick={onNavigateToSites} className={getLinkClass('sites')}>
               案場管理

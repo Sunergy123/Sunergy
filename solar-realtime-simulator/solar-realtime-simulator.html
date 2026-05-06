@@ -393,6 +393,72 @@ tbody tr:first-child {
   }
 }
 
+.bridge-band {
+  margin-top: 14px;
+  padding: 14px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.bridge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.bridge-title {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.bridge-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.bridge-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.bridge-url {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.bridge-url input {
+  min-width: 240px;
+}
+
+.bridge-status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+}
+
+.bridge-idle { background: #f4f5f1; color: var(--muted); }
+.bridge-ok { background: #e7f6ee; color: var(--green); border-color: #b6dcc6; }
+.bridge-fail { background: #fbeae6; color: var(--red); border-color: #f0b9b1; }
+
+.bridge-counter {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
     </style>
   </head>
   <body>
@@ -440,6 +506,22 @@ tbody tr:first-child {
         <button id="stepOnce" type="button">單步輸出</button>
         <button id="reset" type="button">重置</button>
         <button id="exportCsv" type="button">匯出 CSV</button>
+      </section>
+
+      <section class="bridge-band" aria-label="連線到系統">
+        <div class="bridge-row">
+          <strong class="bridge-title">連線到日光預系統</strong>
+          <label class="bridge-toggle">
+            <input id="pushEnabled" type="checkbox" />
+            <span>推送到系統</span>
+          </label>
+          <label class="bridge-url">
+            後端 URL
+            <input id="backendUrl" type="text" value="http://127.0.0.1:8000" spellcheck="false" />
+          </label>
+          <span id="pushStatus" class="bridge-status bridge-idle">未啟用</span>
+          <span id="pushCounter" class="bridge-counter">已推送 0 筆 / 失敗 0</span>
+        </div>
       </section>
 
       <section class="status-strip" aria-live="polite">
@@ -713,6 +795,10 @@ const els = {
   trendCanvas: document.querySelector("#trendCanvas"),
   logBody: document.querySelector("#logBody"),
   logCount: document.querySelector("#logCount"),
+  pushEnabled: document.querySelector("#pushEnabled"),
+  backendUrl: document.querySelector("#backendUrl"),
+  pushStatus: document.querySelector("#pushStatus"),
+  pushCounter: document.querySelector("#pushCounter"),
 };
 
 const state = {
@@ -723,6 +809,8 @@ const state = {
   timer: null,
   log: [],
   stepMinutes: 5,
+  pushOk: 0,
+  pushFail: 0,
 };
 
 const formatNumber = new Intl.NumberFormat("zh-TW", {
@@ -780,6 +868,71 @@ function initializeControls() {
     rebuildSlots();
     resetToSelectedStart();
   });
+
+  // 連線到系統：從 localStorage 還原設定
+  try {
+    const savedUrl = localStorage.getItem("sunergy_backend_url");
+    if (savedUrl) els.backendUrl.value = savedUrl;
+    const savedPush = localStorage.getItem("sunergy_push_enabled");
+    if (savedPush === "1") els.pushEnabled.checked = true;
+  } catch (_) { /* localStorage 不可用就略過 */ }
+  refreshPushStatus();
+
+  els.backendUrl.addEventListener("change", () => {
+    try { localStorage.setItem("sunergy_backend_url", els.backendUrl.value.trim()); } catch (_) {}
+  });
+  els.pushEnabled.addEventListener("change", () => {
+    try { localStorage.setItem("sunergy_push_enabled", els.pushEnabled.checked ? "1" : "0"); } catch (_) {}
+    refreshPushStatus();
+  });
+}
+
+function refreshPushStatus() {
+  if (!els.pushEnabled.checked) {
+    els.pushStatus.textContent = "未啟用";
+    els.pushStatus.className = "bridge-status bridge-idle";
+  } else if (state.pushFail > 0 && state.pushOk === 0) {
+    els.pushStatus.textContent = "連線失敗";
+    els.pushStatus.className = "bridge-status bridge-fail";
+  } else if (state.pushOk > 0) {
+    els.pushStatus.textContent = "已連線";
+    els.pushStatus.className = "bridge-status bridge-ok";
+  } else {
+    els.pushStatus.textContent = "等待輸出";
+    els.pushStatus.className = "bridge-status bridge-idle";
+  }
+  els.pushCounter.textContent = `已推送 ${state.pushOk} 筆 / 失敗 ${state.pushFail}`;
+}
+
+function pushSlotToBackend(slot) {
+  if (!els.pushEnabled.checked) return;
+  const baseUrl = (els.backendUrl.value || "").trim().replace(/\/+$/, "");
+  if (!baseUrl) return;
+  const body = {
+    the_date: slot.date,
+    the_hour: slot.hour,
+    the_minute: slot.minute,
+    gi: slot.gi,
+    tm: slot.tm,
+    eac: slot.eac,
+  };
+  // fire-and-forget；失敗不阻塞模擬器
+  fetch(`${baseUrl}/realtime/push`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    keepalive: true,
+  })
+    .then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      state.pushOk += 1;
+    })
+    .catch(() => {
+      state.pushFail += 1;
+    })
+    .finally(() => {
+      refreshPushStatus();
+    });
 }
 
 function renderSummary() {
@@ -850,6 +1003,7 @@ function outputNextSlot() {
   renderSlot(slot);
   renderLog();
   drawTrend();
+  pushSlotToBackend(slot);
 }
 
 function renderSlot(slot) {

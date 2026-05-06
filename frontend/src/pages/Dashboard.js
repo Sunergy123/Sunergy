@@ -124,6 +124,7 @@ export default function Dashboard({
   onNavigateToSites,
   onOpenCreateSite,
   onNavigateToPredict,
+  onNavigateToRealtime,
   onNavigateToModelMgmt,
   onNavigateToChangePassword,
 }) {
@@ -335,6 +336,7 @@ export default function Dashboard({
           onNavigateToTrain={onNavigateToTrain}
           onNavigateToSites={onNavigateToSites}
           onNavigateToPredict={onNavigateToPredict}
+          onNavigateToRealtime={onNavigateToRealtime}
           onNavigateToModelMgmt={onNavigateToModelMgmt}
           onNavigateToChangePassword={onNavigateToChangePassword}
           onLogout={onLogout}

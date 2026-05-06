@@ -70,6 +70,7 @@ export default function ModelTraining({
   onNext,
   onNavigateToDashboard,
   onNavigateToPredict,
+  onNavigateToRealtime,
   onNavigateToModelMgmt,
   onLogout,
   onNavigateToSites,
@@ -283,6 +284,7 @@ export default function ModelTraining({
         onNavigateToDashboard={onNavigateToDashboard}
         onNavigateToPredict={onNavigateToPredict}
         onNavigateToSites={onNavigateToSites}
+        onNavigateToRealtime={onNavigateToRealtime}
         onNavigateToModelMgmt={onNavigateToModelMgmt}
         onNavigateToChangePassword={onNavigateToChangePassword}
         onLogout={onLogout}

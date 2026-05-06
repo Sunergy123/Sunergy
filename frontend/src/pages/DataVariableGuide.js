@@ -7,8 +7,9 @@ export default function DataVariableGuide({
   onNavigateToDashboard, 
   onNavigateToPredict,
   onNavigateToSites,
-  onNavigateToTrain,     
-  onNavigateToModelMgmt, 
+  onNavigateToTrain,
+  onNavigateToRealtime,
+  onNavigateToModelMgmt,
   onNavigateToChangePassword,
   onLogout,
   restoredFromVisualization = false,
@@ -28,7 +29,8 @@ export default function DataVariableGuide({
         onNavigateToPredict={onNavigateToPredict}
         onNavigateToSites={onNavigateToSites}
         onLogout={onLogout}
-        onNavigateToTrain={onNavigateToTrain} 
+        onNavigateToTrain={onNavigateToTrain}
+        onNavigateToRealtime={onNavigateToRealtime}
         onNavigateToModelMgmt={onNavigateToModelMgmt}
         onNavigateToChangePassword={onNavigateToChangePassword}
       />

@@ -14,6 +14,7 @@ import StartPredict from './pages/StartPredict';        // 步驟 1
 import DataCleaning from './pages/DataCleaning';        // 步驟 2
 import ModelTraining from './pages/ModelTraining';      // 步驟 4
 import PredictSolar from './pages/PredictSolar';        // 步驟 5 (預測結果)
+import RealtimePredict from './pages/RealtimePredict';  // 即時預測
 import Sites from './pages/Sites';
 import ModelManagement from './pages/ModelManagement';
 import UserGuide from './pages/UserGuide';
@@ -162,9 +163,10 @@ function App() {
         navigate('data-guide');
       },
       onNavigateToPredict: () => {
-        setPredictFrom(null);   
+        setPredictFrom(null);
         navigate('predict-solar');
       },
+      onNavigateToRealtime: () => navigate('realtime-predict'),
       onNavigateToSites: () => navigate('site'),
       onNavigateToModelMgmt: () => navigate('model-mgmt'),
 
@@ -182,6 +184,15 @@ function App() {
       
       case 'model-mgmt': 
         return <ModelManagement {...commonNavbarProps} />;
+
+      case 'realtime-predict':
+        return (
+          <RealtimePredict
+            {...commonNavbarProps}
+            activePage="realtime-predict"
+            onBack={() => navigate('dashboard')}
+          />
+        );
 
       case 'predict-solar':
         return (

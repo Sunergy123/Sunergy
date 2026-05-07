@@ -105,6 +105,7 @@ export default function ModelTraining({
   const [trainingResults, setTrainingResults] = useState({});
   const [strategy, setStrategy] = useState('bayes');
   const [device, setDevice] = useState('auto');  // 'auto' | 'cpu' | 'cuda'
+  const [publicModels, setPublicModels] = useState([]);
   const [cleanedFileName, setCleanedFileName] = useState('');
   const [bayesTrials, setBayesTrials] = useState(30);
   // Training status state
@@ -141,6 +142,14 @@ export default function ModelTraining({
       })
       .catch(err => console.error(err));
   }, []);
+
+  const togglePublicModel = (modelId) => {
+    setPublicModels(prev =>
+      prev.includes(modelId)
+        ? prev.filter(m => m !== modelId)
+        : [...prev, modelId]
+    );
+  };
 
   const handleStartTraining = async () => {
     if (selectedModels.length === 0) return alert('請選擇模型');
@@ -215,7 +224,8 @@ export default function ModelTraining({
           models: selectedModels,
           strategy,
           params,
-          device
+          device,
+          public_models: publicModels
         })
       });
 
@@ -393,7 +403,39 @@ export default function ModelTraining({
             <div className="flex flex-col gap-4">
               {selectedModels.map(id => (
                 <div key={id} className="p-4 bg-black/20 rounded-xl border border-white/5">
-                  <p className="text-[10px] font-bold text-white/60 mb-6 uppercase tracking-tighter border-b border-white/5 pb-1">{id} 模型參數設定</p>
+                  <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-2">
+                    <p className="text-[10px] font-bold text-white/60 uppercase tracking-tighter">
+                      {id} 模型參數設定
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => togglePublicModel(id)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all duration-200
+                        ${publicModels.includes(id)
+                          ? 'bg-primary/20 border-primary text-primary shadow-[0_0_12px_rgba(242,204,13,0.25)]'
+                          : 'bg-white/[0.03] border-white/10 text-white/40 hover:border-white/30'
+                        }`}
+                    >
+                      <div
+                        className={`size-4 rounded flex items-center justify-center border
+                          ${publicModels.includes(id)
+                            ? 'bg-primary border-primary'
+                            : 'border-white/20'
+                          }`}
+                      >
+                        {publicModels.includes(id) && (
+                          <span className="material-symbols-outlined text-black !text-sm">
+                            check
+                          </span>
+                        )}
+                      </div>
+
+                      <span className="text-xs font-bold">
+                        {publicModels.includes(id) ? '已設為公開模型' : '設為公開模型'}
+                      </span>
+                    </button>
+                  </div>
 
                   {id === 'XGBoost' && (
                     <>
@@ -458,7 +500,11 @@ export default function ModelTraining({
             </div>
           </section>
 
-          <button onClick={handleStartTraining} disabled={isTraining || selectedModels.length === 0} className="w-full py-4 bg-primary text-background-dark rounded-xl font-black text-sm transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-30">
+          <button
+            onClick={handleStartTraining}
+            disabled={isTraining || selectedModels.length === 0}
+            className="w-full py-4 bg-primary text-background-dark rounded-xl font-black text-sm transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-30"
+          >
             {isTraining ? '模型訓練中...' : '開始執行訓練'}
           </button>
 

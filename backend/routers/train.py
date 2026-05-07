@@ -112,6 +112,12 @@ def delete_trained_model(
 
     model, site, after, site_data = row
 
+    if model.is_public:
+        raise HTTPException(
+            status_code=403,
+            detail="公用模型不可刪除"
+        )
+
     # 刪除模型檔案
     if model.file_path:
         base_dir = Path(__file__).resolve().parent.parent
@@ -174,10 +180,13 @@ def list_trained_models(
 
                 file_name = site_data.data_name
 
-        # 自己 + system
-        if not site or (
+        # 自己的模型 or 公用模型
+        if not site:
+            continue
+
+        if (
             site.user_id != user_id
-            and site.user_id != SYSTEM_USER_ID
+            and not model.is_public
         ):
             continue
 
@@ -198,7 +207,7 @@ def list_trained_models(
             "wmape": model.wmape,
 
             "usage_count": model.usage_count or 0,
-            "is_public": site.user_id == SYSTEM_USER_ID,
+            "is_public": model.is_public,
         })
 
     return out
@@ -231,6 +240,10 @@ def batch_delete_models(data: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="找不到可刪除的模型")
 
     # 刪檔案（跟你單筆一樣）
+    models = [
+        row for row in models
+        if not row[0].is_public
+    ]
     for model, site, after, site_data in models:
         if model.file_path:
             base_dir = Path(__file__).resolve().parent.parent
@@ -666,6 +679,8 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
                     "r2": model_result.get("r2"),
                     "mae": model_result.get("mae"),
                     "wmape": model_result.get("wmape"),
+
+                    "is_public": art.get('model_id') in payload.public_models,
 
                     # ✅ JSON（可選）
                     "metrics": {

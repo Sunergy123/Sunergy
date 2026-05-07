@@ -134,6 +134,8 @@ class TrainedModel(Base):
 
     metrics = Column(JSONB, nullable=True)
 
+    is_public = Column(Boolean, default=False)
+
     __table_args__ = (
         CheckConstraint(
             "(upload_id IS NOT NULL AND after_id IS NULL) OR (upload_id IS NULL AND after_id IS NOT NULL)",

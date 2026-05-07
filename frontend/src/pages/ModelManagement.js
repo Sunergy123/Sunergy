@@ -155,7 +155,11 @@ export default function ModelManagement({
         throw new Error(data.detail || '批次刪除失敗');
       }
 
-      setModels(prev => prev.filter(m => !selectedIds.includes(m.id)));
+      setModels(prev =>
+        prev.filter(m =>
+          !(selectedIds.includes(m.id) && !m.isPublic)
+        )
+      );
       setSelectedIds([]);
 
     } catch (error) {
@@ -415,7 +419,7 @@ export default function ModelManagement({
                 </p>
 
                 <button
-                  onClick={() => setSelectedIds(models.map(m => m.id))}
+                  onClick={() => setSelectedIds(privateModels.map(m => m.id))}
                   className="text-sm text-white/60 hover:text-white underline"
                 >
                   全選

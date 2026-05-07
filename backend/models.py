@@ -100,7 +100,6 @@ class AfterData(Base):
     after_name = Column(String, nullable=False)
     before_rows = Column(Integer, nullable=False)
     after_rows = Column(Integer, nullable=False)
-    removed_ratio = Column(Float, nullable=False)
     outlier_method = Column(String, nullable=True)
     gi_tm_applied = Column(Boolean, nullable=False)
     outlier_params = Column(JSONB, nullable=True)

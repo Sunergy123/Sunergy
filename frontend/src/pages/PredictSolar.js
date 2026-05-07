@@ -570,7 +570,7 @@ export default function PredictSolar({
 
                 {/* 算法篩選 */}
                 <div className="flex gap-1.5 mb-3 flex-wrap">
-                  {['all', ...Array.from(new Set(trainedModels.map(m => m.model_type)))].map(type => (
+                  {['all','public', ...Array.from(new Set(trainedModels.map(m => m.model_type)))].map(type => (
                     <button
                       key={type}
                       onClick={() => setModelTypeFilter(type)}
@@ -579,7 +579,13 @@ export default function PredictSolar({
                         : 'border-white/10 bg-white/5 text-white/40 hover:text-white/60'
                         }`}
                     >
-                      {type === 'all' ? '全部' : type}
+                      {
+                        type === 'all'
+                          ? '全部'
+                          : type === 'public'
+                            ? '官方模型'
+                            : type
+                      }
                     </button>
                   ))}
                 </div>
@@ -589,7 +595,15 @@ export default function PredictSolar({
                     <p className="text-sm text-white/20 italic py-4 text-center">尚無可用模型</p>
                   )}
                   {trainedModels
-                    .filter(m => modelTypeFilter === 'all' || m.model_type === modelTypeFilter)
+                    .filter(m => {
+                      if (modelTypeFilter === 'all') return true;
+
+                      if (modelTypeFilter === 'public') {
+                        return m.is_public;
+                      }
+
+                      return m.model_type === modelTypeFilter;
+                    })
                     .filter(m => {
                       if (!modelSearch.trim()) return true;
                       const q = modelSearch.toLowerCase();
@@ -618,6 +632,11 @@ export default function PredictSolar({
                           />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
+                              {m.is_public && (
+                                <span className="text-[10px] bg-sky-500/20 text-sky-400 px-1.5 py-0.5 rounded-full font-bold">
+                                  官方模型
+                                </span>
+                              )}
                               <span className={`text-xs font-black px-2 py-0.5 rounded ${isSelected ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/50'
                                 }`}>
                                 {m.model_type}

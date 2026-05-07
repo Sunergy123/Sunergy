@@ -73,7 +73,7 @@ const SystemIntroduction = () => (
     <div className="space-y-4 text-white/70 leading-relaxed text-lg">
       <p>
         本系統整合了 <span className="text-primary font-bold">大數據分析</span> 與{' '}
-        <span className="text-primary font-bold">深度學習技術</span>，
+        <span className="text-primary font-bold">機器學習技術</span>，
         專為太陽能案場設計。透過監測日照量、溫度及歷史發電數據，我們能精準預測電力產出，
         並透過自動化資料清洗流程，確保預測模型在不同格式下仍能維持其穩定性與準確度。
       </p>
@@ -130,6 +130,7 @@ export default function Dashboard({
   // 尋找 const [searchTerm, setSearchTerm] = useState(''); 附近
   const [stats, setStats] = useState({ total_kwh: 0, total_carbon_reduction: 0 }); 
   const [searchTerm, setSearchTerm] = useState('');
+  const [modelTab, setModelTab] = useState('all');
   const [allModels, setAllModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(true);
   const [modelError, setModelError] = useState('');
@@ -278,6 +279,7 @@ export default function Dashboard({
             dataId: item.data_id,
             filePath: item.file_path,
             parameters: item.parameters || {},
+            isPublic: item.is_public,
           };
         });
 
@@ -315,9 +317,17 @@ export default function Dashboard({
   fetchDashboardStats();
 }, []); // 僅在頁面載入時執行一次
 
-  const filteredModels = allModels.filter((model) =>
-    model.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredModels = allModels.filter((model) => {
+    const matchSearch = model.name
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase());
+
+    if (modelTab === 'public') {
+      return matchSearch && model.isPublic;
+    }
+
+    return matchSearch;
+  });
 
   const topModels = [...allModels]
     .sort((a, b) => (b.usage || 0) - (a.usage || 0))
@@ -363,8 +373,36 @@ export default function Dashboard({
               </section>
 
               <section className="bg-white/[0.02] rounded-2xl p-6 border border-white/10">
-                <div className="flex justify-between mb-6">
-                  <h2 className="text-xl font-bold">已建立模型</h2>
+                <div className="flex justify-between items-center mb-6">
+                  <div className="flex items-center gap-3">
+
+                    <h2 className="text-xl font-bold">已建立模型</h2>
+
+                    <div className="flex bg-white/5 rounded-lg p-1 border border-white/10">
+                      <button
+                        onClick={() => setModelTab('all')}
+                        className={`px-3 py-1 text-xs rounded-md transition ${
+                          modelTab === 'all'
+                            ? 'bg-primary text-black font-bold'
+                            : 'text-white/60 hover:text-white'
+                        }`}
+                      >
+                        全部
+                      </button>
+
+                      <button
+                        onClick={() => setModelTab('public')}
+                        className={`px-3 py-1 text-xs rounded-md transition ${
+                          modelTab === 'public'
+                            ? 'bg-primary text-black font-bold'
+                            : 'text-white/60 hover:text-white'
+                        }`}
+                      >
+                        公用模型
+                      </button>
+                    </div>
+                  </div>
+
                   <input
                     type="text"
                     placeholder="搜尋模型..."
@@ -447,6 +485,11 @@ export default function Dashboard({
                           <div className="flex-1">
                             <div className="flex justify-between items-start mb-1">
                               <h3 className="font-bold text-white text-lg">{model.name}</h3>
+                              {model.isPublic && (
+                                <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+                                  公用
+                                </span>
+                              )}
                               <div className="text-right">
                                 <span className="text-[9px] text-white/40 block uppercase leading-none mb-1">
                                   使用次數

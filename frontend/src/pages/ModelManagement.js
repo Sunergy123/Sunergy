@@ -91,6 +91,7 @@ export default function ModelManagement({
 
           metrics,
 
+          isPublic: item.is_public,
         };
       });
 
@@ -163,6 +164,9 @@ export default function ModelManagement({
     }
   };
 
+  const privateModels = models.filter(model => !model.isPublic);
+  const publicModels = models.filter(model => model.isPublic);
+
   return (
     <div className="min-h-screen w-full bg-background-dark text-white flex flex-col font-sans">
       <Navbar activePage="model-mgmt" {...navProps} />
@@ -187,99 +191,218 @@ export default function ModelManagement({
             <p className="text-white/20 text-lg italic">資料載入中...</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4">
-            {models.length > 0 ? (
-              models.map((model) => (
-                <div
-                  key={model.id}
-                  className="bg-white/[0.02] border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between hover:bg-white/[0.04] transition-all group"
-                >
-                  <div className="flex items-center gap-6">
-                    <label className="cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="hidden"
-                        checked={selectedIds.includes(model.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedIds(prev => [...prev, model.id]);
-                          } else {
-                            setSelectedIds(prev => prev.filter(id => id !== model.id));
-                          }
-                        }}
-                      />
+          <div className="space-y-10">
 
-                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all
-                        ${selectedIds.includes(model.id)
-                          ? 'bg-primary border-primary'
-                          : 'border-white/30 hover:border-white/60'}
-                      `}>
-                        {selectedIds.includes(model.id) && (
-                          <span className="material-symbols-outlined text-xs text-black">check</span>
-                        )}
-                      </div>
-                    </label>
-                    <div className="size-14 rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-background-dark transition-colors">
-                      <span className="material-symbols-outlined !text-3xl">psychology</span>
-                    </div>
+  {/* 我的模型 */}
+  <section>
+    <div className="flex items-center gap-3 mb-4">
+      <span className="material-symbols-outlined text-primary">
+        lock
+      </span>
 
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-lg font-bold text-white group-hover:text-primary transition-colors">
-                          {model.siteDisplay}
-                        </h3>
-                      </div>
+      <h2 className="text-xl font-bold">
+        我的模型
+      </h2>
 
-                      <p className="text-xs text-white/40 mt-1.5 font-mono">
-                        📄 {model.fileName} ｜ 🕒 {model.date}
-                      </p>
-                    </div>
-                  </div>
+      <span className="text-xs px-2 py-1 rounded bg-white/5 text-white/40">
+        {privateModels.length} 筆
+      </span>
+    </div>
 
-                  <div className="flex items-center justify-between md:justify-end gap-10 mt-6 md:mt-0">
-                    <div className="text-right">
-                      <p className="text-[10px] text-white/40 uppercase font-bold tracking-widest mb-1">
-                        訓練表現
-                      </p>
-                      <div className="text-right text-sm font-mono space-y-1">
-                        <p>R²：{model.metrics?.r2?.toFixed(3) ?? '-'}</p>
-                        <p>RMSE：{model.metrics?.rmse?.toFixed(3) ?? '-'}</p>
-                        <p>MAE：{model.metrics?.mae?.toFixed(3) ?? '-'}</p>
-                        <p className="text-yellow-400 font-bold">
-                          WMAPE：{model.metrics?.wmape?.toFixed(4) ?? '-'}
-                        </p>
-                      </div>
-                    </div>
+    <div className="grid grid-cols-1 gap-4">
+      {privateModels.length > 0 ? (
+        privateModels.map((model) => (
+          <div
+            key={model.id}
+            className="bg-white/[0.02] border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between hover:bg-white/[0.04] transition-all group"
+          >
+            <div className="flex items-center gap-6">
 
-                    <div className="flex gap-2 border-l border-white/10 pl-6">
-                      <button
-                        title="查看詳情"
-                        onClick={() => {
-                          localStorage.setItem("predict_model_id", model.id);
-                          onNavigateToPredict();
-                        }}
-                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-all"
-                      >
-                        <span className="material-symbols-outlined">visibility</span>
-                      </button>
+              {/* checkbox */}
+              <label className="cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="hidden"
+                  checked={selectedIds.includes(model.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedIds(prev => [...prev, model.id]);
+                    } else {
+                      setSelectedIds(prev =>
+                        prev.filter(id => id !== model.id)
+                      );
+                    }
+                  }}
+                />
 
-                      <button
-                        title="刪除模型"
-                        onClick={() => setDeleteId(model.id)}
-                        className="p-2.5 rounded-xl bg-red-500/5 hover:bg-red-500/20 text-white/30 hover:text-red-400 transition-all"
-                      >
-                        <span className="material-symbols-outlined">delete</span>
-                      </button>
-                    </div>
-                  </div>
+                <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all
+                  ${selectedIds.includes(model.id)
+                    ? 'bg-primary border-primary'
+                    : 'border-white/30 hover:border-white/60'}
+                `}>
+                  {selectedIds.includes(model.id) && (
+                    <span className="material-symbols-outlined text-xs text-black">
+                      check
+                    </span>
+                  )}
                 </div>
-              ))
-            ) : (
-              <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-3xl">
-                <p className="text-white/20 text-lg italic">目前尚無可顯示的模型</p>
+              </label>
+
+              <div className="size-14 rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-background-dark transition-colors">
+                <span className="material-symbols-outlined !text-3xl">
+                  psychology
+                </span>
               </div>
-            )}
+
+              <div>
+                <h3 className="text-lg font-bold text-white group-hover:text-primary transition-colors">
+                  {model.siteDisplay}
+                </h3>
+
+                <p className="text-xs text-white/40 mt-1.5 font-mono">
+                  📄 {model.fileName} ｜ 🕒 {model.date}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between md:justify-end gap-10 mt-6 md:mt-0">
+
+              <div className="text-right text-sm font-mono space-y-1">
+                <p>R²：{model.metrics?.r2?.toFixed(3) ?? '-'}</p>
+                <p>RMSE：{model.metrics?.rmse?.toFixed(3) ?? '-'}</p>
+                <p>MAE：{model.metrics?.mae?.toFixed(3) ?? '-'}</p>
+                <p className="text-yellow-400 font-bold">
+                  WMAPE：{model.metrics?.wmape?.toFixed(4) ?? '-'}
+                </p>
+              </div>
+
+              <div className="flex gap-2 border-l border-white/10 pl-6">
+
+                {/* 查看 */}
+                <button
+                  title="查看詳情"
+                  onClick={() => {
+                    localStorage.setItem("predict_model_id", model.id);
+                    onNavigateToPredict();
+                  }}
+                  className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-all"
+                >
+                  <span className="material-symbols-outlined">
+                    visibility
+                  </span>
+                </button>
+
+                {/* 刪除 */}
+                <button
+                  title="刪除模型"
+                  onClick={() => setDeleteId(model.id)}
+                  className="p-2.5 rounded-xl bg-red-500/5 hover:bg-red-500/20 text-white/30 hover:text-red-400 transition-all"
+                >
+                  <span className="material-symbols-outlined">
+                    delete
+                  </span>
+                </button>
+
+              </div>
+            </div>
           </div>
+        ))
+      ) : (
+        <div className="py-10 text-center border border-dashed border-white/10 rounded-2xl">
+          <p className="text-white/30">
+            尚無私人模型
+          </p>
+        </div>
+      )}
+    </div>
+  </section>
+
+  {/* 公用模型 */}
+  <section>
+    <div className="flex items-center gap-3 mb-4">
+      <span className="material-symbols-outlined text-yellow-400">
+        public
+      </span>
+
+      <h2 className="text-xl font-bold">
+        公用模型
+      </h2>
+
+      <span className="text-xs px-2 py-1 rounded bg-yellow-500/10 text-yellow-300 border border-yellow-500/20">
+        {publicModels.length} 筆
+      </span>
+    </div>
+
+    <div className="grid grid-cols-1 gap-4">
+      {publicModels.length > 0 ? (
+        publicModels.map((model) => (
+          <div
+            key={model.id}
+            className="bg-yellow-500/[0.03] border border-yellow-500/10 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between"
+          >
+            <div className="flex items-center gap-6">
+
+              <div className="size-14 rounded-xl bg-yellow-500/10 text-yellow-300 flex items-center justify-center">
+                <span className="material-symbols-outlined !text-3xl">
+                  public
+                </span>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-white">
+                    {model.siteDisplay}
+                  </h3>
+
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+                    公用
+                  </span>
+                </div>
+
+                <p className="text-xs text-white/40 mt-1.5 font-mono">
+                  📄 {model.fileName} ｜ 🕒 {model.date}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-10 mt-6 md:mt-0">
+
+              <div className="text-right text-sm font-mono space-y-1">
+                <p>R²：{model.metrics?.r2?.toFixed(3) ?? '-'}</p>
+                <p>RMSE：{model.metrics?.rmse?.toFixed(3) ?? '-'}</p>
+                <p>MAE：{model.metrics?.mae?.toFixed(3) ?? '-'}</p>
+                <p className="text-yellow-400 font-bold">
+                  WMAPE：{model.metrics?.wmape?.toFixed(4) ?? '-'}
+                </p>
+              </div>
+
+              <button
+                title="查看詳情"
+                onClick={() => {
+                  localStorage.setItem("predict_model_id", model.id);
+                  onNavigateToPredict();
+                }}
+                className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-all"
+              >
+                <span className="material-symbols-outlined">
+                  visibility
+                </span>
+              </button>
+
+            </div>
+          </div>
+        ))
+      ) : (
+        <div className="py-10 text-center border border-dashed border-yellow-500/10 rounded-2xl">
+          <p className="text-white/30">
+            尚無公用模型
+          </p>
+        </div>
+      )}
+    </div>
+  </section>
+
+</div>
         )}
         {selectedIds.length >= 2 && (
           <div className="fixed bottom-0 left-0 w-full z-50">

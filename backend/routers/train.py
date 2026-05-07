@@ -136,6 +136,8 @@ def list_trained_models(
     user_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
+    SYSTEM_USER_ID = 12  # system帳號ID
+
     models = (
         db.query(TrainedModel)
         .order_by(TrainedModel.trained_at.desc())
@@ -149,19 +151,34 @@ def list_trained_models(
         file_name = "未知檔案"
 
         if model.after_id:
-            after = db.query(AfterData).filter(AfterData.after_id == model.after_id).first()
+            after = db.query(AfterData).filter(
+                AfterData.after_id == model.after_id
+            ).first()
+
             if after:
-                site = db.query(Site).filter(Site.site_id == after.site_id).first()
+                site = db.query(Site).filter(
+                    Site.site_id == after.site_id
+                ).first()
+
                 file_name = after.after_name
 
         elif model.upload_id:
-            site_data = db.query(SiteData).filter(SiteData.upload_id == model.upload_id).first()
+            site_data = db.query(SiteData).filter(
+                SiteData.upload_id == model.upload_id
+            ).first()
+
             if site_data:
-                site = db.query(Site).filter(Site.site_id == site_data.site_id).first()
+                site = db.query(Site).filter(
+                    Site.site_id == site_data.site_id
+                ).first()
+
                 file_name = site_data.data_name
 
-        # 🔥 只保留該使用者
-        if not site or site.user_id != user_id:
+        # 自己 + system
+        if not site or (
+            site.user_id != user_id
+            and site.user_id != SYSTEM_USER_ID
+        ):
             continue
 
         out.append({
@@ -181,6 +198,7 @@ def list_trained_models(
             "wmape": model.wmape,
 
             "usage_count": model.usage_count or 0,
+            "is_public": site.user_id == SYSTEM_USER_ID,
         })
 
     return out

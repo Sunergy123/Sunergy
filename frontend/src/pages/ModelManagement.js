@@ -106,6 +106,12 @@ export default function ModelManagement({
   };
 
   const handleDelete = async (id) => {
+    // 公用模型前端也禁止刪除
+    const model = models.find(m => m.id === id);
+    if (model?.isPublic) {
+      alert('公用模型不可刪除');
+      return;
+    }
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const userId = user.user_id;

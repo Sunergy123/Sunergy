@@ -106,6 +106,10 @@ export default function ModelTraining({
   const [strategy, setStrategy] = useState('bayes');
   const [device, setDevice] = useState('auto');  // 'auto' | 'cpu' | 'cuda'
   const [publicModels, setPublicModels] = useState([]);
+  // 公用模型選擇 Modal state
+  const [showPublicModal, setShowPublicModal] = useState(false);
+  const [pendingResults, setPendingResults] = useState(null);
+  const [modalPublicModels, setModalPublicModels] = useState([]);
   const [cleanedFileName, setCleanedFileName] = useState('');
   const [bayesTrials, setBayesTrials] = useState(30);
   // Training status state
@@ -225,7 +229,7 @@ export default function ModelTraining({
           strategy,
           params,
           device,
-          public_models: publicModels
+          public_models: []   // 訓練時全設私人，訓練後由彈窗決定
         })
       });
 
@@ -245,7 +249,12 @@ export default function ModelTraining({
         alert('訓練完成但沒有返回結果，請檢查後端日誌');
       } else {
         setTrainingResults(results);
-        setIsTrained(true);
+        // 訓練完成後彈出公用模型選擇 Modal
+        const okModelIds = Object.keys(results).filter(k => results[k].status === 'ok');
+        const modelDbIds = json.model_db_ids || {};
+        setModalPublicModels([]);
+        setPendingResults({ results, okModelIds, modelDbIds });
+        setShowPublicModal(true);
       }
       if (json.cleaned_file) setCleanedFileName(json.cleaned_file);
     } catch (e) {
@@ -408,33 +417,7 @@ export default function ModelTraining({
                       {id} 模型參數設定
                     </p>
 
-                    <button
-                      type="button"
-                      onClick={() => togglePublicModel(id)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all duration-200
-                        ${publicModels.includes(id)
-                          ? 'bg-primary/20 border-primary text-primary shadow-[0_0_12px_rgba(242,204,13,0.25)]'
-                          : 'bg-white/[0.03] border-white/10 text-white/40 hover:border-white/30'
-                        }`}
-                    >
-                      <div
-                        className={`size-4 rounded flex items-center justify-center border
-                          ${publicModels.includes(id)
-                            ? 'bg-primary border-primary'
-                            : 'border-white/20'
-                          }`}
-                      >
-                        {publicModels.includes(id) && (
-                          <span className="material-symbols-outlined text-black !text-sm">
-                            check
-                          </span>
-                        )}
-                      </div>
 
-                      <span className="text-xs font-bold">
-                        {publicModels.includes(id) ? '已設為公開模型' : '設為公開模型'}
-                      </span>
-                    </button>
                   </div>
 
                   {id === 'XGBoost' && (
@@ -672,6 +655,97 @@ export default function ModelTraining({
         <button onClick={onBack} className="px-6 py-2 text-white/40 hover:text-white transition-colors text-sm">取消</button>
         <button onClick={onNext} disabled={!isTrained} className={`px-10 py-2 rounded-lg font-bold text-sm transition-all ${isTrained ? 'bg-primary text-background-dark hover:shadow-[0_0_15px_rgba(242,204,13,0.4)]' : 'bg-white/10 text-white/20 cursor-not-allowed'}`}>開始進行預測</button>
       </div>
+
+      {/* 訓練完成後：公用模型選擇 Modal */}
+      {showPublicModal && pendingResults && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#111] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl">
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4 border-b border-white/10">
+              <div className="flex items-center gap-3 mb-1">
+                <span className="size-9 rounded-xl bg-primary/15 text-primary flex items-center justify-center">
+                  <span className="material-symbols-outlined !text-xl">public</span>
+                </span>
+                <h2 className="text-lg font-black text-white">設定公用模型</h2>
+              </div>
+              <p className="text-xs text-white/40 mt-1 ml-12">公用模型可供所有人使用，<span className="text-yellow-400 font-bold">一旦設為公用即無法刪除</span>。</p>
+            </div>
+
+            {/* 模型列表 */}
+            <div className="px-6 py-5 space-y-3">
+              {pendingResults.okModelIds.map(modelId => {
+                const isChecked = modalPublicModels.includes(modelId);
+                return (
+                  <label key={modelId} className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all ${isChecked ? 'border-primary bg-primary/5' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}>
+                    <input type="checkbox" className="hidden" checked={isChecked} onChange={() => {
+                      setModalPublicModels(prev => prev.includes(modelId) ? prev.filter(m => m !== modelId) : [...prev, modelId]);
+                    }} />
+                    <div className={`size-5 rounded-md border flex-shrink-0 flex items-center justify-center transition-all ${isChecked ? 'bg-primary border-primary' : 'border-white/30'}`}>
+                      {isChecked && <span className="material-symbols-outlined !text-sm text-black">check</span>}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-white">{modelId}</p>
+                      {pendingResults.results[modelId]?.wmape !== undefined && (
+                        <p className="text-[11px] text-white/40 font-mono mt-0.5">
+                          WMAPE: {Number(pendingResults.results[modelId].wmape).toFixed(4)}
+                          ｜ R²: {Number(pendingResults.results[modelId].r2).toFixed(3)}
+                        </p>
+                      )}
+                    </div>
+                    {isChecked && (
+                      <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold flex-shrink-0">公用</span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* 快速操作 */}
+            <div className="px-6 pb-3 flex gap-3 text-xs">
+              <button onClick={() => setModalPublicModels([...pendingResults.okModelIds])}
+                className="text-primary hover:underline">全選</button>
+              <span className="text-white/20">·</span>
+              <button onClick={() => setModalPublicModels([])}
+                className="text-white/40 hover:text-white hover:underline">皆設為私人</button>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 pb-6 pt-2 flex gap-3 justify-end border-t border-white/10 mt-2">
+              <button
+                onClick={async () => {
+                  setShowPublicModal(false);
+                  setPublicModels(modalPublicModels);
+                  // 無論是否有公用模型，都呼叫後端（model_db_ids 告知對應關係）
+                  if (pendingResults?.modelDbIds && Object.keys(pendingResults.modelDbIds).length > 0) {
+                    try {
+                      const res = await fetch('http://127.0.0.1:8000/train/set-public', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          model_db_ids: pendingResults.modelDbIds,
+                          public_model_types: modalPublicModels,
+                        })
+                      });
+                      if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        console.error('設定公用模型失敗:', err);
+                      }
+                    } catch (e) {
+                      console.error('設定公用模型失敗:', e);
+                    }
+                  }
+                  setIsTrained(true);
+                }}
+                className="px-6 py-2.5 rounded-xl bg-primary text-background-dark font-black text-sm hover:shadow-[0_0_15px_rgba(242,204,13,0.35)] transition-all"
+              >
+                {modalPublicModels.length > 0
+                  ? `確認（${modalPublicModels.length} 個公用，${pendingResults.okModelIds.length - modalPublicModels.length} 個私人）`
+                  : '全部設為私人'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

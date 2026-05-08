@@ -227,6 +227,32 @@ def list_trained_models(
  
     return out
 
+@router.post("/set-public")
+def set_public_models(
+    data: dict,
+    db: Session = Depends(get_db)
+):
+    """訓練完成後，將指定 DB model_id 設為公用（用 model_db_ids 精準更新）"""
+    # 優先使用 model_db_ids: { "XGBoost": 42, "SVR": 43 }
+    model_db_ids = data.get("model_db_ids", {})
+    public_model_types = data.get("public_model_types", [])
+
+    if not model_db_ids:
+        raise HTTPException(status_code=400, detail="缺少 model_db_ids")
+
+    updated = []
+    for model_type, db_id in model_db_ids.items():
+        if model_type not in public_model_types:
+            continue  # 未選為公用，跳過
+        model = db.query(TrainedModel).filter(TrainedModel.model_id == db_id).first()
+        if model:
+            model.is_public = True
+            updated.append(db_id)
+
+    db.commit()
+    return {"updated_model_ids": updated, "message": f"已設定 {len(updated)} 個公用模型"}
+
+
 @router.post("/trained-models/batch-delete")
 def batch_delete_models(data: dict, db: Session = Depends(get_db)):
     model_ids = data.get("model_ids", [])
@@ -680,6 +706,7 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
         if site_id is None:
             raise HTTPException(status_code=400, detail="site_id 為空，無法建立 trained_model")
 
+        saved_models = []
         for art in saved:
             try:
                 model_result = results.get(art.get('model_id'), {})
@@ -715,17 +742,25 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
 
                 tm = TrainedModel(**tm_data)
                 db.add(tm)
+                saved_models.append({'model_id_key': art.get('model_id'), 'tm': tm})
             except Exception as e:
                 db.rollback()
                 raise HTTPException(status_code=500, detail=f"建立 TrainedModel 失敗: {str(e)}")
 
         try:
             db.commit()
+            # flush 後 tm.model_id 才有值
+            for item in saved_models:
+                db.refresh(item['tm'])
         except Exception as e:
             db.rollback()
             raise HTTPException(status_code=500, detail=f"寫入 trained_model 失敗: {str(e)}")
 
-        db.commit()
+        # 建立 model_type → db model_id 的對照表（供前端 set-public 用）
+        model_db_ids = {
+            item['model_id_key']: item['tm'].model_id
+            for item in saved_models
+        }
 
     warnings = []
     if 'save_errors' in locals() and save_errors:
@@ -744,6 +779,7 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
         "n_test": int(len(y_test)),
         "feature_cols_used": feature_cols,
         "results": results,
+        "model_db_ids": model_db_ids if 'model_db_ids' in locals() else {},
         "warnings": warnings,
     })
 

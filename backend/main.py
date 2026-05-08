@@ -10,10 +10,14 @@ from routers.site import router as site_router
 from routers.visualize import router as visualize_router
 from routers.train import router as train_router
 from routers.predict import router as predict_router
-
-Base.metadata.create_all(bind=engine)
+from routers import train
+from routers import predict
 
 app = FastAPI()
+
+app.include_router(train.router)
+app.include_router(predict.router)
+Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,

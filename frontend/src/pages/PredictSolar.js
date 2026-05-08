@@ -570,7 +570,7 @@ export default function PredictSolar({
 
                 {/* 算法篩選 */}
                 <div className="flex gap-1.5 mb-3 flex-wrap">
-                  {['all','public', ...Array.from(new Set(trainedModels.map(m => m.model_type)))].map(type => (
+                  {['all', 'public', 'mine', ...Array.from(new Set(trainedModels.map(m => m.model_type)))].map(type => (
                     <button
                       key={type}
                       onClick={() => setModelTypeFilter(type)}
@@ -583,8 +583,10 @@ export default function PredictSolar({
                         type === 'all'
                           ? '全部'
                           : type === 'public'
-                            ? '官方模型'
-                            : type
+                            ? '公用模型'
+                            : type === 'mine'
+                              ? '我的模型'
+                              : type
                       }
                     </button>
                   ))}
@@ -600,6 +602,11 @@ export default function PredictSolar({
 
                       if (modelTypeFilter === 'public') {
                         return m.is_public;
+                      }
+
+                      if (modelTypeFilter === 'mine') {
+                        const user = JSON.parse(localStorage.getItem('user') || '{}');
+                        return !m.is_public;
                       }
 
                       return m.model_type === modelTypeFilter;
@@ -634,7 +641,7 @@ export default function PredictSolar({
                             <div className="flex items-center gap-2 flex-wrap">
                               {m.is_public && (
                                 <span className="text-[10px] bg-sky-500/20 text-sky-400 px-1.5 py-0.5 rounded-full font-bold">
-                                  官方模型
+                                  公用模型
                                 </span>
                               )}
                               <span className={`text-xs font-black px-2 py-0.5 rounded ${isSelected ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/50'

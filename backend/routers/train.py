@@ -142,74 +142,89 @@ def list_trained_models(
     user_id: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    SYSTEM_USER_ID = 12  # system帳號ID
-
     models = (
         db.query(TrainedModel)
         .order_by(TrainedModel.trained_at.desc())
         .all()
     )
-
+ 
     out = []
-
+ 
     for model in models:
         site = None
         file_name = "未知檔案"
-
+ 
         if model.after_id:
             after = db.query(AfterData).filter(
                 AfterData.after_id == model.after_id
             ).first()
-
             if after:
                 site = db.query(Site).filter(
                     Site.site_id == after.site_id
                 ).first()
-
                 file_name = after.after_name
-
+ 
         elif model.upload_id:
             site_data = db.query(SiteData).filter(
                 SiteData.upload_id == model.upload_id
             ).first()
-
             if site_data:
                 site = db.query(Site).filter(
                     Site.site_id == site_data.site_id
                 ).first()
-
-                file_name = site_data.data_name
-
-        # 自己的模型 or 公用模型
+                file_name = site_data.data_name or "CPC_D414Z01.xlsx"
+ 
+        # ── 公用基礎模型（site 可能為 None）直接放行 ──────────
+        if model.is_public and not site:
+            out.append({
+                "model_id":    model.model_id,
+                "model_type":  model.model_type,
+                "parameters":  model.parameters,
+                "file_path":   model.file_path,
+                "trained_at":  model.trained_at.isoformat() if model.trained_at else None,
+ 
+                "site_name":   "基礎模型",
+                "location":    "CPC_D414Z01",
+ 
+                "file_name":   "CPC_D414Z01.xlsx",
+                "rmse":        model.rmse,
+                "r2":          model.r2,
+                "mae":         model.mae,
+                "wmape":       model.wmape,
+ 
+                "usage_count": model.usage_count or 0,
+                "is_public":   model.is_public,
+            })
+            continue
+ 
+        # ── 沒有 site 且非公用 → 跳過 ─────────────────────────
         if not site:
             continue
-
-        if (
-            site.user_id != user_id
-            and not model.is_public
-        ):
+ 
+        # ── 其他人的私有模型 → 跳過 ───────────────────────────
+        if site.user_id != user_id and not model.is_public:
             continue
-
+ 
         out.append({
-            "model_id": model.model_id,
-            "model_type": model.model_type,
-            "parameters": model.parameters,
-            "file_path": model.file_path,
-            "trained_at": model.trained_at.isoformat() if model.trained_at else None,
-
-            "site_name": site.site_name if site else None,
-            "location": site.location if site else None,
-
-            "file_name": file_name,
-            "rmse": model.rmse,
-            "r2": model.r2,
-            "mae": model.mae,
-            "wmape": model.wmape,
-
+            "model_id":    model.model_id,
+            "model_type":  model.model_type,
+            "parameters":  model.parameters,
+            "file_path":   model.file_path,
+            "trained_at":  model.trained_at.isoformat() if model.trained_at else None,
+ 
+            "site_name":   site.site_name if site else None,
+            "location":    site.location  if site else None,
+ 
+            "file_name":   file_name,
+            "rmse":        model.rmse,
+            "r2":          model.r2,
+            "mae":         model.mae,
+            "wmape":       model.wmape,
+ 
             "usage_count": model.usage_count or 0,
-            "is_public": model.is_public,
+            "is_public":   model.is_public,
         })
-
+ 
     return out
 
 @router.post("/trained-models/batch-delete")

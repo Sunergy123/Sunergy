@@ -44,6 +44,10 @@ export default function StartPredict({
   const [lazyStep, setLazyStep] = useState("idle"); // idle | cleaning | training | done | error
   const [lazyError, setLazyError] = useState("");
   const [lazyBest, setLazyBest] = useState(null);   // { model_id, model_type, wmape }
+  // 懶人模式訓練完後的公用模型選擇 Modal
+  const [showLazyPublicModal, setShowLazyPublicModal] = useState(false);
+  const [lazyPendingData, setLazyPendingData] = useState(null); // { modelDbIds, okModelIds, results }
+  const [lazyModalPublicModels, setLazyModalPublicModels] = useState([]);
 
   const getUserId = () => {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -226,6 +230,7 @@ export default function StartPredict({
           strategy: "bayes",
           params: buildDefaultTrainParams(),
           device: "auto",
+          public_models: [],   // 訓練時全設私人，訓練後由彈窗決定
         }),
       });
       const trainJson = await trainRes.json();
@@ -233,66 +238,39 @@ export default function StartPredict({
         throw new Error(trainJson?.detail || "模型訓練失敗");
       }
       const results = trainJson.results || {};
-      const okList = Object.values(results).filter(
-        (r) => r.status === "ok" && r.wmape !== undefined && r.wmape !== null
+      const modelDbIds = trainJson.model_db_ids || {};
+      const okList = Object.entries(results).filter(
+        ([, r]) => r.status === "ok" && r.wmape !== undefined && r.wmape !== null
       );
       if (okList.length === 0) {
         throw new Error("三個模型皆訓練失敗，請檢查資料品質後重試");
       }
 
       // ── Step 3: 挑 WMAPE 最低者作為推薦 ──
-      const winner = okList.reduce((best, r) =>
-        Number(r.wmape) < Number(best.wmape) ? r : best
+      const [winnerId, winnerResult] = okList.reduce((best, cur) =>
+        Number(cur[1].wmape) < Number(best[1].wmape) ? cur : best
       );
-      // /train/run 回應不含 model_id，需另外查 /train/trained-models。
-      // /train/trained-models 已按 trained_at desc 排序、且只回傳該使用者的模型，
-      // 所以 model_type 相符的第一筆即為剛訓練好的紀錄。
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      const userId = user.user_id;
-      let winnerModelId = null;
-      if (userId) {
-        try {
-          const listRes = await fetch(
-            `http://127.0.0.1:8000/train/trained-models?user_id=${userId}`
-          );
-          const list = await listRes.json();
-          if (Array.isArray(list)) {
-            const matched = list
-              .filter((m) => m.model_type === winner.id)
-              .sort(
-                (a, b) =>
-                  new Date(b.trained_at || 0).getTime() -
-                  new Date(a.trained_at || 0).getTime()
-              );
-            if (matched.length > 0) winnerModelId = matched[0].model_id;
-          }
-        } catch (e) {
-          console.error("trained-models lookup failed:", e);
-        }
-      }
+      const winnerModelId = modelDbIds[winnerId] || null;
       if (!winnerModelId) {
-        throw new Error("找不到推薦模型的 ID，請改用手動模式重新訓練");
+        throw new Error("找不到推薦模型的 DB ID，請改用手動模式重新訓練");
       }
 
       const bestInfo = {
         model_id: winnerModelId,
-        model_type: winner.id,
-        wmape: Number(winner.wmape),
+        model_type: winnerId,
+        wmape: Number(winnerResult.wmape),
       };
       setLazyBest(bestInfo);
-      // 給 PredictSolar 預選 + 顯示推薦徽章用
       localStorage.setItem("predict_model_id", String(winnerModelId));
       localStorage.setItem("lazyModeWinnerId", String(winnerModelId));
-      localStorage.setItem(
-        "lazyModeWinnerInfo",
-        JSON.stringify(bestInfo)
-      );
+      localStorage.setItem("lazyModeWinnerInfo", JSON.stringify(bestInfo));
 
       setLazyStep("done");
-      // 短暫顯示「完成」訊息後跳轉
-      setTimeout(() => {
-        if (typeof onLazyFinish === "function") onLazyFinish();
-      }, 1200);
+      // 訓練完成後彈出公用模型選擇 Modal（而非直接跳轉）
+      const okModelIds = okList.map(([k]) => k);
+      setLazyModalPublicModels([]);
+      setLazyPendingData({ modelDbIds, okModelIds, results });
+      setShowLazyPublicModal(true);
     } catch (err) {
       console.error("lazy mode error:", err);
       setLazyError(err.message || "懶人模式執行失敗");
@@ -659,7 +637,7 @@ export default function StartPredict({
       </div>
 
       {/* 懶人模式：進度遮罩 */}
-      {lazyStep !== "idle" && (
+      {lazyStep !== "idle" && !showLazyPublicModal && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
           <div className="w-full max-w-lg rounded-2xl border border-primary/30 bg-background-dark p-8 shadow-2xl">
             <div className="flex items-center gap-3 mb-6">
@@ -740,6 +718,104 @@ export default function StartPredict({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 懶人模式：訓練完成後公用模型選擇 Modal ── */}
+      {showLazyPublicModal && lazyPendingData && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+          <div className="bg-[#111] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl">
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4 border-b border-white/10">
+              <div className="flex items-center gap-3 mb-1">
+                <span className="size-9 rounded-xl bg-primary/15 text-primary flex items-center justify-center">
+                  <span className="material-symbols-outlined !text-xl">public</span>
+                </span>
+                <h2 className="text-lg font-black text-white">設定公用模型</h2>
+              </div>
+              <p className="text-xs text-white/40 mt-1 ml-12">
+                公用模型可供所有人使用，<span className="text-yellow-400 font-bold">一旦設為公用即無法刪除</span>。
+              </p>
+            </div>
+
+            {/* 模型列表 */}
+            <div className="px-6 py-5 space-y-3">
+              {lazyPendingData.okModelIds.map(modelKey => {
+                const r = lazyPendingData.results[modelKey];
+                const isChecked = lazyModalPublicModels.includes(modelKey);
+                const isWinner = lazyBest?.model_type === modelKey;
+                return (
+                  <label key={modelKey} className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all ${isChecked ? 'border-primary bg-primary/5' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}>
+                    <input type="checkbox" className="hidden" checked={isChecked} onChange={() => {
+                      setLazyModalPublicModels(prev =>
+                        prev.includes(modelKey) ? prev.filter(m => m !== modelKey) : [...prev, modelKey]
+                      );
+                    }} />
+                    <div className={`size-5 rounded-md border flex-shrink-0 flex items-center justify-center transition-all ${isChecked ? 'bg-primary border-primary' : 'border-white/30'}`}>
+                      {isChecked && <span className="material-symbols-outlined !text-sm text-black">check</span>}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold text-white">{modelKey}</p>
+                        {isWinner && (
+                          <span className="text-[10px] bg-yellow-400/20 text-yellow-300 px-2 py-0.5 rounded-full font-bold">推薦</span>
+                        )}
+                      </div>
+                      {r?.wmape !== undefined && (
+                        <p className="text-[11px] text-white/40 font-mono mt-0.5">
+                          WMAPE: {Number(r.wmape).toFixed(4)}
+                          {r.r2 !== undefined && ` ｜ R²: ${Number(r.r2).toFixed(3)}`}
+                        </p>
+                      )}
+                    </div>
+                    {isChecked && (
+                      <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold flex-shrink-0">公用</span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* 快速操作 */}
+            <div className="px-6 pb-3 flex gap-3 text-xs">
+              <button onClick={() => setLazyModalPublicModels([...lazyPendingData.okModelIds])}
+                className="text-primary hover:underline">全選</button>
+              <span className="text-white/20">·</span>
+              <button onClick={() => setLazyModalPublicModels([])}
+                className="text-white/40 hover:text-white hover:underline">皆設為私人</button>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 pb-6 pt-2 flex gap-3 justify-end border-t border-white/10 mt-2">
+              <button
+                onClick={async () => {
+                  setShowLazyPublicModal(false);
+                  // 若有選公用，呼叫後端
+                  if (lazyPendingData.modelDbIds && Object.keys(lazyPendingData.modelDbIds).length > 0) {
+                    try {
+                      await fetch('http://127.0.0.1:8000/train/set-public', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          model_db_ids: lazyPendingData.modelDbIds,
+                          public_model_types: lazyModalPublicModels,
+                        }),
+                      });
+                    } catch (e) {
+                      console.error('設定公用模型失敗:', e);
+                    }
+                  }
+                  // 確認後才跳轉
+                  if (typeof onLazyFinish === 'function') onLazyFinish();
+                }}
+                className="px-6 py-2.5 rounded-xl bg-primary text-background-dark font-black text-sm hover:shadow-[0_0_15px_rgba(242,204,13,0.35)] transition-all"
+              >
+                {lazyModalPublicModels.length > 0
+                  ? `確認（${lazyModalPublicModels.length} 個公用，${lazyPendingData.okModelIds.length - lazyModalPublicModels.length} 個私人）`
+                  : '全部設為私人，進入預測'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -17,6 +17,13 @@ export default function ModelManagement({
   const [selectedIds, setSelectedIds] = useState([]);
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
 
+  // 搜尋 & 分頁
+  const [searchQuery, setSearchQuery] = useState('');
+  const PAGE_SIZE = 5;
+  const [privatePage, setPrivatePage] = useState(1);
+  const [publicPage, setPublicPage] = useState(1);
+
+
   const navProps = {
     onNavigateToDashboard,
     onNavigateToTrain,
@@ -174,8 +181,28 @@ export default function ModelManagement({
     }
   };
 
-  const privateModels = models.filter(model => !model.isPublic);
-  const publicModels = models.filter(model => model.isPublic);
+  // 搜尋過濾（搜名稱、模型類型、檔名、日期）
+  const filterModel = (model) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      model.siteDisplay.toLowerCase().includes(q) ||
+      model.type.toLowerCase().includes(q) ||
+      model.fileName.toLowerCase().includes(q) ||
+      model.date.toLowerCase().includes(q)
+    );
+  };
+
+  const privateModels = models.filter(m => !m.isPublic && filterModel(m));
+  const publicModels  = models.filter(m =>  m.isPublic && filterModel(m));
+
+  // 分頁計算
+  const privateTotalPages = Math.max(1, Math.ceil(privateModels.length / PAGE_SIZE));
+  const publicTotalPages  = Math.max(1, Math.ceil(publicModels.length  / PAGE_SIZE));
+  const safePrivatePage = Math.min(privatePage, privateTotalPages);
+  const safePublicPage  = Math.min(publicPage,  publicTotalPages);
+  const privatePagedModels = privateModels.slice((safePrivatePage - 1) * PAGE_SIZE, safePrivatePage * PAGE_SIZE);
+  const publicPagedModels  = publicModels.slice( (safePublicPage  - 1) * PAGE_SIZE, safePublicPage  * PAGE_SIZE);
 
   return (
     <div className="min-h-screen w-full bg-background-dark text-white flex flex-col font-sans">
@@ -194,6 +221,33 @@ export default function ModelManagement({
               <p className="text-xl font-black text-primary">{models.length}</p>
             </div>
           </div>
+        </div>
+
+        {/* 搜尋欄 */}
+        <div className="mb-8">
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-white/30 !text-xl pointer-events-none">search</span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setPrivatePage(1); setPublicPage(1); }}
+              placeholder="搜尋模型名稱、類型、檔名…"
+              className="w-full bg-white/[0.04] border border-white/10 rounded-xl pl-11 pr-10 py-3 text-sm text-white placeholder-white/25 focus:outline-none focus:border-primary/50 focus:bg-white/[0.06] transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => { setSearchQuery(''); setPrivatePage(1); setPublicPage(1); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+              >
+                <span className="material-symbols-outlined !text-lg">close</span>
+              </button>
+            )}
+          </div>
+          {searchQuery && (
+            <p className="text-xs text-white/30 mt-2 pl-1">
+              找到 {privateModels.length + publicModels.length} 筆結果（私人 {privateModels.length}、公用 {publicModels.length}）
+            </p>
+          )}
         </div>
 
         {loading ? (
@@ -217,11 +271,14 @@ export default function ModelManagement({
       <span className="text-xs px-2 py-1 rounded bg-white/5 text-white/40">
         {privateModels.length} 筆
       </span>
+      {searchQuery && privateModels.length !== models.filter(m => !m.isPublic).length && (
+        <span className="text-xs text-primary/70">（已篩選）</span>
+      )}
     </div>
 
     <div className="grid grid-cols-1 gap-4">
       {privateModels.length > 0 ? (
-        privateModels.map((model) => (
+        privatePagedModels.map((model) => (
           <div
             key={model.id}
             className="bg-white/[0.02] border border-white/10 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between hover:bg-white/[0.04] transition-all group"
@@ -320,11 +377,41 @@ export default function ModelManagement({
       ) : (
         <div className="py-10 text-center border border-dashed border-white/10 rounded-2xl">
           <p className="text-white/30">
-            尚無私人模型
+            {searchQuery ? '沒有符合搜尋條件的私人模型' : '尚無私人模型'}
           </p>
         </div>
       )}
     </div>
+
+    {/* 私人模型分頁 */}
+    {privateTotalPages > 1 && (
+      <div className="flex items-center justify-center gap-2 mt-6">
+        <button
+          onClick={() => setPrivatePage(p => Math.max(1, p - 1))}
+          disabled={safePrivatePage === 1}
+          className="px-3 py-1.5 rounded-lg border border-white/10 text-white/40 hover:bg-white/5 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all text-sm"
+        >
+          <span className="material-symbols-outlined !text-base align-middle">chevron_left</span>
+        </button>
+        {Array.from({ length: privateTotalPages }, (_, i) => i + 1).map(p => (
+          <button
+            key={p}
+            onClick={() => setPrivatePage(p)}
+            className={`w-8 h-8 rounded-lg text-sm font-bold transition-all ${safePrivatePage === p ? 'bg-primary text-black' : 'border border-white/10 text-white/40 hover:bg-white/5 hover:text-white'}`}
+          >
+            {p}
+          </button>
+        ))}
+        <button
+          onClick={() => setPrivatePage(p => Math.min(privateTotalPages, p + 1))}
+          disabled={safePrivatePage === privateTotalPages}
+          className="px-3 py-1.5 rounded-lg border border-white/10 text-white/40 hover:bg-white/5 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all text-sm"
+        >
+          <span className="material-symbols-outlined !text-base align-middle">chevron_right</span>
+        </button>
+        <span className="text-xs text-white/30 ml-2">{safePrivatePage} / {privateTotalPages} 頁</span>
+      </div>
+    )}
   </section>
 
   {/* 公用模型 */}
@@ -345,7 +432,7 @@ export default function ModelManagement({
 
     <div className="grid grid-cols-1 gap-4">
       {publicModels.length > 0 ? (
-        publicModels.map((model) => (
+        publicPagedModels.map((model) => (
           <div
             key={model.id}
             className="bg-yellow-500/[0.03] border border-yellow-500/10 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between"
@@ -405,11 +492,41 @@ export default function ModelManagement({
       ) : (
         <div className="py-10 text-center border border-dashed border-yellow-500/10 rounded-2xl">
           <p className="text-white/30">
-            尚無公用模型
+            {searchQuery ? '沒有符合搜尋條件的公用模型' : '尚無公用模型'}
           </p>
         </div>
       )}
     </div>
+
+    {/* 公用模型分頁 */}
+    {publicTotalPages > 1 && (
+      <div className="flex items-center justify-center gap-2 mt-6">
+        <button
+          onClick={() => setPublicPage(p => Math.max(1, p - 1))}
+          disabled={safePublicPage === 1}
+          className="px-3 py-1.5 rounded-lg border border-yellow-500/20 text-yellow-400/50 hover:bg-yellow-500/5 hover:text-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-sm"
+        >
+          <span className="material-symbols-outlined !text-base align-middle">chevron_left</span>
+        </button>
+        {Array.from({ length: publicTotalPages }, (_, i) => i + 1).map(p => (
+          <button
+            key={p}
+            onClick={() => setPublicPage(p)}
+            className={`w-8 h-8 rounded-lg text-sm font-bold transition-all ${safePublicPage === p ? 'bg-yellow-400 text-black' : 'border border-yellow-500/20 text-yellow-400/50 hover:bg-yellow-500/5 hover:text-yellow-300'}`}
+          >
+            {p}
+          </button>
+        ))}
+        <button
+          onClick={() => setPublicPage(p => Math.min(publicTotalPages, p + 1))}
+          disabled={safePublicPage === publicTotalPages}
+          className="px-3 py-1.5 rounded-lg border border-yellow-500/20 text-yellow-400/50 hover:bg-yellow-500/5 hover:text-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-sm"
+        >
+          <span className="material-symbols-outlined !text-base align-middle">chevron_right</span>
+        </button>
+        <span className="text-xs text-yellow-400/30 ml-2">{safePublicPage} / {publicTotalPages} 頁</span>
+      </div>
+    )}
   </section>
 
 </div>

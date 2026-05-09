@@ -483,20 +483,22 @@ export default function Dashboard({
                           </div>
 
                           <div className="flex-1">
-                            <div className="flex justify-between items-start mb-1">
-                              <h3 className="font-bold text-white text-lg">{model.name}</h3>
-                              {model.isPublic && (
-                                <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
-                                  公用
-                                </span>
-                              )}
-                              <div className="text-right">
-                                <span className="text-[9px] text-white/40 block uppercase leading-none mb-1">
-                                  使用次數
-                                </span>
-                                <span className="text-primary font-mono font-bold text-base">
-                                  {model.usage} 次
-                                </span>
+                            <div className="flex justify-between items-start mb-1 gap-3 flex-wrap">
+                              <h3 className="font-bold text-white text-lg min-w-0 flex-1 break-words leading-snug">{model.name}</h3>
+                              <div className="flex flex-col items-end gap-1 flex-shrink-0 self-start">
+                                {model.isPublic && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
+                                    公用
+                                  </span>
+                                )}
+                                <div className="text-right">
+                                  <span className="text-[9px] text-white/40 block uppercase leading-none mb-1 whitespace-nowrap">
+                                    使用次數
+                                  </span>
+                                  <span className="text-primary font-mono font-bold text-base whitespace-nowrap">
+                                    {model.usage} 次
+                                  </span>
+                                </div>
                               </div>
                             </div>
 

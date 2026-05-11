@@ -8,6 +8,10 @@ export default function EditSiteModal({ site, onClose, onUpdated }) {
     site_name: site.site_name || "",
     site_code: site.site_code || "",
     location: site.location || "",
+    capacity_kwp:
+      site.capacity_kwp === null || site.capacity_kwp === undefined
+        ? ""
+        : String(site.capacity_kwp),
   });
 
   const [error, setError] = useState("");
@@ -21,13 +25,23 @@ export default function EditSiteModal({ site, onClose, onUpdated }) {
       return;
     }
 
+    let kwpVal = null;
+    if (form.capacity_kwp !== "" && form.capacity_kwp !== null) {
+      const n = Number(form.capacity_kwp);
+      if (!Number.isFinite(n) || n <= 0) {
+        setError("裝置容量必須是大於 0 的數字");
+        return;
+      }
+      kwpVal = n;
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/site/${site.site_id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, capacity_kwp: kwpVal }),
       });
 
       const data = await res.json();
@@ -41,6 +55,7 @@ export default function EditSiteModal({ site, onClose, onUpdated }) {
       onUpdated?.({
         ...site,
         ...form,
+        capacity_kwp: kwpVal,
       });
       
       window.dispatchEvent(new Event("site-updated"));
@@ -90,13 +105,31 @@ export default function EditSiteModal({ site, onClose, onUpdated }) {
         </div>
 
         {/* 地點 */}
-        <div className="mb-6">
+        <div className="mb-4">
           <label className="block text-sm text-white/60 mb-1">地點</label>
           <input
             value={form.location}
             onChange={(e) =>
               setForm({ ...form, location: e.target.value })
             }
+            className="w-full rounded-md bg-black/40 border border-white/20 px-3 py-2"
+          />
+        </div>
+
+        {/* 裝置容量 (kWp) */}
+        <div className="mb-6">
+          <label className="block text-sm text-white/60 mb-1">
+            裝置容量 (kWp) <span className="text-white/40 text-xs">（用於物理式估算）</span>
+          </label>
+          <input
+            type="number"
+            step="0.1"
+            min="0"
+            value={form.capacity_kwp}
+            onChange={(e) =>
+              setForm({ ...form, capacity_kwp: e.target.value })
+            }
+            placeholder="例如：10"
             className="w-full rounded-md bg-black/40 border border-white/20 px-3 py-2"
           />
         </div>

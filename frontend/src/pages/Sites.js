@@ -65,6 +65,7 @@ export default function Sites({
           site_code: payload.site_code,
           site_name: payload.site_name,
           location: payload.location,
+          capacity_kwp: payload.capacity_kwp ?? null,
         }),
       });
 
@@ -83,6 +84,7 @@ export default function Sites({
                 site_code: payload.site_code,
                 site_name: payload.site_name,
                 location: payload.location,
+                capacity_kwp: payload.capacity_kwp ?? null,
               }
             : s
         )
@@ -225,7 +227,7 @@ export default function Sites({
               {/* 展開 */}
               {expandedSiteId === site.site_id && (
                 <div className="border-t border-white/10 p-6">
-                  <div className="grid md:grid-cols-3 gap-6 mb-6">
+                  <div className="grid md:grid-cols-4 gap-6 mb-6">
                     <div>
                       <p className="text-xs text-white/40">地點</p>
                       <p>{site.location}</p>
@@ -234,6 +236,15 @@ export default function Sites({
                     <div>
                       <p className="text-xs text-white/40">案場代號</p>
                       <p className="font-mono">{site.site_code}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-white/40">裝置容量</p>
+                      <p className="font-mono">
+                        {site.capacity_kwp != null
+                          ? `${site.capacity_kwp} kWp`
+                          : <span className="text-white/40">未設定</span>}
+                      </p>
                     </div>
 
                     <div>

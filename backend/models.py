@@ -40,6 +40,7 @@ class Site(Base):
     site_code = Column(String, nullable=False)
     site_name = Column(String, nullable=False)
     location = Column(String, nullable=False)
+    capacity_kwp = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user_id = Column(Integer, ForeignKey("user.user_id"), nullable=False)
@@ -100,6 +101,7 @@ class AfterData(Base):
     after_name = Column(String, nullable=False)
     before_rows = Column(Integer, nullable=False)
     after_rows = Column(Integer, nullable=False)
+    removed_ratio = Column(Float, nullable=False, default=0.0)
     outlier_method = Column(String, nullable=True)
     gi_tm_applied = Column(Boolean, nullable=False)
     outlier_params = Column(JSONB, nullable=True)

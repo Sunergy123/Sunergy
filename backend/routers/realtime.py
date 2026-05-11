@@ -206,16 +206,19 @@ def _predict_for_tick(tick: dict, model_info: dict) -> float:
 # ═══════════════════════════════════════
 @router.get("/feed")
 def feed(
-    model_ids: str = Query(..., description="逗號分隔的 model_id"),
+    model_ids: str = Query("", description="逗號分隔的 model_id（可空，純物理式時）"),
     since: int = Query(0, description="只回傳 tick_id > since 的新資料"),
+    physics_kwp: Optional[float] = Query(None),
+    physics_pr: Optional[float] = Query(None),
     db: Session = Depends(get_db),
 ):
     try:
         id_list = [int(x.strip()) for x in model_ids.split(",") if x.strip()]
     except ValueError:
         raise HTTPException(400, "model_ids 格式錯誤")
-    if not id_list:
-        raise HTTPException(400, "至少需要一個 model_id")
+    use_physics = physics_kwp is not None and physics_kwp > 0
+    if not id_list and not use_physics:
+        raise HTTPException(400, "至少需要一個 model_id 或啟用物理式")
 
     # load + cache 模型
     models_info = {}
@@ -271,6 +274,25 @@ def feed(
             else:
                 r[eabs_col] = None
                 r[err_col] = None
+
+        # 物理式偽模型欄位
+        if use_physics:
+            from routers.physics import compute_physics_eac, DEFAULT_PR
+            pr_v = float(physics_pr) if physics_pr is not None else DEFAULT_PR
+            pv = round(compute_physics_eac(t["GI"], t.get("TM"), float(physics_kwp), pr=pr_v), 4)
+            r["pred_physics_0"] = pv
+            if t["EAC"] is not None:
+                ea = round(pv - t["EAC"], 4)
+                r["eabs_physics_0"] = ea
+                if abs(t["EAC"]) > 1e-6:
+                    r["err_physics_0"] = round(ea / abs(t["EAC"]) * 100, 2)
+                elif pv == 0:
+                    r["err_physics_0"] = 0.0
+                else:
+                    r["err_physics_0"] = None
+            else:
+                r["eabs_physics_0"] = None
+                r["err_physics_0"] = None
         rows_out.append(r)
 
     # models_summary 對「整個 buffer」做累計（不只新進來那批）
@@ -315,6 +337,40 @@ def feed(
     for mid in id_list:
         mtype = models_info[mid]["model_type"]
         pred_cols += [f"pred_{mtype}_{mid}", f"err_{mtype}_{mid}", f"eabs_{mtype}_{mid}"]
+    if use_physics:
+        pred_cols += ["pred_physics_0", "err_physics_0", "eabs_physics_0"]
+
+    # 物理式 summary
+    if use_physics:
+        from routers.physics import compute_physics_eac, DEFAULT_PR
+        pr_v = float(physics_pr) if physics_pr is not None else DEFAULT_PR
+        kwp_v = float(physics_kwp)
+        sum_pred = sum_act = sum_abs_diff = sum_abs_err = sum_abs_act = 0.0
+        n_pred = n_act = 0
+        for t in all_ticks:
+            pv = compute_physics_eac(t["GI"], t.get("TM"), kwp_v, pr=pr_v)
+            sum_pred += pv
+            n_pred += 1
+            if t["EAC"] is not None:
+                act = t["EAC"]
+                sum_act += act
+                n_act += 1
+                d = abs(pv - act)
+                sum_abs_diff += d
+                if abs(act) > 1e-6:
+                    sum_abs_err += d
+                    sum_abs_act += abs(act)
+        models_summary.append({
+            "model_id": 0,
+            "model_type": "physics",
+            "status": "ok",
+            "total_predicted_eac": round(sum_pred, 2) if n_pred > 0 else None,
+            "total_actual_eac": round(sum_act, 2) if n_act > 0 else None,
+            "avg_error_pct": round(sum_abs_err / sum_abs_act * 100, 2) if sum_abs_act > 0 else None,
+            "avg_error_abs": round(sum_abs_diff / n_act, 4) if n_act > 0 else None,
+            "physics_kwp": kwp_v,
+            "physics_pr": pr_v,
+        })
 
     new_cursor = new_ticks[-1]["tick_id"] if new_ticks else since
 

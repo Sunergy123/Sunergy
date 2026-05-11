@@ -31,6 +31,7 @@ def list_sites(user_id: int, db: Session = Depends(get_db)):
             "site_code": s.site_code,
             "site_name": s.site_name,
             "location": s.location,
+            "capacity_kwp": s.capacity_kwp,
             "created_at": s.created_at.isoformat() if s.created_at else None,
             "user_id": s.user_id,
         }
@@ -77,6 +78,7 @@ def create_site(payload: CreateSite, db: Session = Depends(get_db)):
         site_code=payload.site_code,
         site_name=payload.site_name,
         location=payload.location,
+        capacity_kwp=payload.capacity_kwp,
         user_id=payload.user_id,
     )
 
@@ -297,6 +299,9 @@ def update_site(site_id: int, payload: UpdateSite, db: Session = Depends(get_db)
 
     if payload.location is not None:
         site.location = payload.location
+
+    if payload.capacity_kwp is not None:
+        site.capacity_kwp = payload.capacity_kwp
 
     db.commit()
     db.refresh(site)

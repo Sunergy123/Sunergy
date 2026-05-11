@@ -12,6 +12,7 @@ export default function CreateSiteModal({ onClose, onSubmit }) {
     site_code: "",
     site_name: "",
     location: "",
+    capacity_kwp: "",
   });
 
   // 錯誤訊息（⭐ 關鍵）
@@ -23,6 +24,7 @@ export default function CreateSiteModal({ onClose, onSubmit }) {
       site_code: "",
       site_name: "",
       location: "",
+      capacity_kwp: "",
     });
     setMsg("");
   }, []);
@@ -43,13 +45,27 @@ export default function CreateSiteModal({ onClose, onSubmit }) {
       return;
     }
 
+    // kWp 可選；若有填則需是正數
+    let kwpVal = null;
+    if (formData.capacity_kwp !== "" && formData.capacity_kwp !== null) {
+      const n = Number(formData.capacity_kwp);
+      if (!Number.isFinite(n) || n <= 0) {
+        setMsg("裝置容量必須是大於 0 的數字");
+        return;
+      }
+      kwpVal = n;
+    }
+
     try {
       /**
        * ⭐ onSubmit 必須回傳：
        * - { success: true }
        * - 或 { success: false, message: "錯誤訊息" }
        */
-      const result = await onSubmit(formData);
+      const result = await onSubmit({
+        ...formData,
+        capacity_kwp: kwpVal,
+      });
 
       if (!result?.success) {
         setMsg(result?.message || "該案場已被建立");
@@ -124,6 +140,23 @@ export default function CreateSiteModal({ onClose, onSubmit }) {
               value={formData.location}
               onChange={handleChange}
               placeholder="例如：嘉義縣太保市"
+              className="rounded-lg bg-black/20 px-4 py-3 text-white placeholder-white/30 border border-white/10 focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+            />
+          </div>
+
+          {/* 裝置容量 (kWp) — 用於物理式估算 */}
+          <div className="flex flex-col gap-2">
+            <label className="text-sm text-white/80">
+              裝置容量 (kWp) <span className="text-white/40 text-xs">（選填，用於物理式估算）</span>
+            </label>
+            <input
+              id="capacity_kwp"
+              type="number"
+              step="0.1"
+              min="0"
+              value={formData.capacity_kwp}
+              onChange={handleChange}
+              placeholder="例如：10"
               className="rounded-lg bg-black/20 px-4 py-3 text-white placeholder-white/30 border border-white/10 focus:border-primary focus:ring-1 focus:ring-primary outline-none"
             />
           </div>

@@ -38,6 +38,7 @@ class CreateSite(BaseModel):
     site_name: str
     location: str
     user_id: int
+    capacity_kwp: Optional[float] = None
 
 
 # ===== Data Process =====
@@ -52,6 +53,7 @@ class UpdateSite(BaseModel):
     site_code: str | None = None
     site_name: str | None = None
     location: str | None = None
+    capacity_kwp: Optional[float] = None
 
 
 # ===== Train =====

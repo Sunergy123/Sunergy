@@ -25,6 +25,7 @@ export default function StartPredict({
   const [newSiteName, setNewSiteName] = useState("");
   const [newSiteCode, setNewSiteCode] = useState("");
   const [newLocation, setNewLocation] = useState("");
+  const [newCapacityKwp, setNewCapacityKwp] = useState("");
 
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
@@ -49,6 +50,12 @@ export default function StartPredict({
   const [showLazyPublicModal, setShowLazyPublicModal] = useState(false);
   const [lazyPendingData, setLazyPendingData] = useState(null); // { modelDbIds, okModelIds, results }
   const [lazyModalPublicModels, setLazyModalPublicModels] = useState([]);
+
+  // 物理式合理性檢查（上傳成功後自動觸發）
+  const [sanityLoading, setSanityLoading] = useState(false);
+  const [sanityResult, setSanityResult] = useState(null);
+  const [sanityError, setSanityError] = useState("");
+  const [showFlaggedRows, setShowFlaggedRows] = useState(false);
 
   const getUserId = () => {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -116,6 +123,17 @@ export default function StartPredict({
       return;
     }
 
+    // 容量為選填；若有填則必須是正數
+    let kwpVal = null;
+    if (newCapacityKwp !== "" && newCapacityKwp !== null) {
+      const n = Number(newCapacityKwp);
+      if (!Number.isFinite(n) || n <= 0) {
+        setSiteError("裝置容量必須是大於 0 的數字");
+        return;
+      }
+      kwpVal = n;
+    }
+
     try {
       const res = await fetch("http://127.0.0.1:8000/site/create", {
         method: "POST",
@@ -124,6 +142,7 @@ export default function StartPredict({
           site_name: newSiteName,
           site_code: newSiteCode,
           location: newLocation,
+          capacity_kwp: kwpVal,
           user_id: uid,
         }),
       });
@@ -141,6 +160,7 @@ export default function StartPredict({
       setNewSiteName("");
       setNewSiteCode("");
       setNewLocation("");
+      setNewCapacityKwp("");
 
       const res2 = await fetch(
         `http://127.0.0.1:8000/site/list?user_id=${uid}`
@@ -279,6 +299,31 @@ export default function StartPredict({
     }
   };
 
+  /* ==================== 物理式合理性檢查 ==================== */
+  const runSanityCheck = async (uploadId) => {
+    setSanityResult(null);
+    setSanityError("");
+    setShowFlaggedRows(false);
+    setSanityLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/physics/sanity-check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ upload_id: uploadId }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setSanityError(json?.detail || "合理性檢查失敗");
+        return;
+      }
+      setSanityResult(json);
+    } catch (e) {
+      setSanityError(e.message || "合理性檢查連線失敗");
+    } finally {
+      setSanityLoading(false);
+    }
+  };
+
   /* ==================== 上傳檔案 ==================== */
   const handleFileSelect = async (event) => {
     const uploadedFile = event.target.files[0];
@@ -293,6 +338,8 @@ export default function StartPredict({
 
     setFileError("");
     setSiteError("");
+    setSanityResult(null);
+    setSanityError("");
 
     if (!selectedSite) {
       setSiteError("請先選擇案場！");
@@ -367,6 +414,9 @@ export default function StartPredict({
 
     // 原本的也保留
     localStorage.setItem("lastSelectedSite", selectedSite);
+
+    // 物理式合理性檢查（無論手動 / 懶人模式都做）
+    Promise.resolve().then(() => runSanityCheck(Number(json.upload_id)));
 
     // 懶人模式：上傳成功後直接接力清洗 + 訓練
     if (lazyMode) {
@@ -511,6 +561,21 @@ export default function StartPredict({
                 onChange={(e) => setNewLocation(e.target.value)}
               />
 
+              <div className="flex flex-col gap-1">
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="裝置容量 kWp（選填）"
+                  className="rounded-lg border border-white/10 bg-black/20 px-4 py-3 text-white"
+                  value={newCapacityKwp}
+                  onChange={(e) => setNewCapacityKwp(e.target.value)}
+                />
+                <span className="text-xs text-white/40 px-1">
+                  選填，用於物理式估算與資料合理性檢查
+                </span>
+              </div>
+
               <button
                 onClick={createNewSite}
                 className="mt-3 bg-primary text-black font-bold px-4 py-2 rounded-lg"
@@ -602,6 +667,130 @@ export default function StartPredict({
                   <li key={idx}>{f}</li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {/* 物理式合理性檢查結果 */}
+          {(sanityLoading || sanityResult || sanityError) && (
+            <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="material-symbols-outlined !text-xl text-blue-300">science</span>
+                <h3 className="text-lg font-bold">物理式合理性檢查</h3>
+                <span className="text-[11px] text-white/40 ml-1">
+                  （以日射量、溫度、案場容量估算理論發電並比對）
+                </span>
+              </div>
+
+              {sanityLoading && (
+                <div className="flex items-center gap-2 text-white/60 text-sm">
+                  <span className="size-4 border-2 border-white/20 border-t-blue-300 rounded-full animate-spin" />
+                  正在檢查資料合理性...
+                </div>
+              )}
+
+              {sanityError && !sanityLoading && (
+                <div className="p-3 rounded border border-yellow-500/30 bg-yellow-500/10 text-yellow-200 text-sm">
+                  <p className="font-bold mb-1">無法執行合理性檢查</p>
+                  <p className="text-yellow-100/80 break-all">{sanityError}</p>
+                  {String(sanityError).includes("裝置容量") && (
+                    <p className="text-xs text-yellow-100/60 mt-2">
+                      請至「案場管理」為此案場填入裝置容量 (kWp)，再重新上傳；不影響後續清洗與訓練。
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {sanityResult && !sanityLoading && (() => {
+                const v = sanityResult.verdict;
+                const cfg = v === "looks_good"
+                  ? { color: "text-green-300", bg: "bg-green-500/10", border: "border-green-500/30", icon: "check_circle", label: "資料合理" }
+                  : v === "minor_issues"
+                    ? { color: "text-yellow-200", bg: "bg-yellow-500/10", border: "border-yellow-500/30", icon: "warning", label: "需留意" }
+                    : { color: "text-red-300", bg: "bg-red-500/10", border: "border-red-500/30", icon: "error", label: "可疑" };
+                return (
+                  <div className={`rounded-lg border ${cfg.border} ${cfg.bg} p-4`}>
+                    <div className="flex items-start gap-3">
+                      <span className={`material-symbols-outlined !text-2xl ${cfg.color}`}>{cfg.icon}</span>
+                      <div className="flex-1">
+                        <p className={`font-bold ${cfg.color}`}>{cfg.label}：{sanityResult.verdict_msg}</p>
+                        <p className="text-xs text-white/50 mt-1">
+                          總筆數 {sanityResult.n_total}，異常 {sanityResult.n_flagged} 筆（{sanityResult.flag_rate}%）
+                          {sanityResult.wmape_vs_physics !== null && (
+                            <> ・ vs 物理估算 WMAPE {sanityResult.wmape_vs_physics}%</>
+                          )}
+                          ・ 容量 {sanityResult.capacity_kwp} kWp / PR {sanityResult.pr}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Summary chips */}
+                    {sanityResult.n_flagged > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {[
+                          { key: "negative_eac", label: "負值 EAC" },
+                          { key: "high_gi_zero_eac", label: "高日照但發電≈0" },
+                          { key: "exceeds_max", label: "超過物理上限" },
+                          { key: "severely_low", label: "顯著低於估算" },
+                        ].map((s) => {
+                          const n = sanityResult.summary?.[s.key] || 0;
+                          if (n === 0) return null;
+                          return (
+                            <span key={s.key} className="text-xs px-2 py-1 rounded bg-black/30 border border-white/10 text-white/80">
+                              {s.label} <span className="font-mono text-white">{n}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Flagged rows toggle */}
+                    {sanityResult.flagged_rows && sanityResult.flagged_rows.length > 0 && (
+                      <div className="mt-3">
+                        <button
+                          onClick={() => setShowFlaggedRows((s) => !s)}
+                          className="text-xs text-blue-300 hover:text-blue-200 underline"
+                        >
+                          {showFlaggedRows ? "收起異常列預覽" : `查看異常列預覽（最多 ${Math.min(sanityResult.flagged_rows.length, 200)} 筆）`}
+                        </button>
+                        {showFlaggedRows && (
+                          <div className="mt-2 max-h-64 overflow-auto rounded border border-white/10">
+                            <table className="w-full text-xs">
+                              <thead className="bg-white/5 text-white/50 uppercase sticky top-0">
+                                <tr>
+                                  <th className="px-2 py-1.5 text-left">日期</th>
+                                  <th className="px-2 py-1.5 text-left">時</th>
+                                  <th className="px-2 py-1.5 text-right">GI</th>
+                                  <th className="px-2 py-1.5 text-right">TM</th>
+                                  <th className="px-2 py-1.5 text-right">實際 EAC</th>
+                                  <th className="px-2 py-1.5 text-right">估算</th>
+                                  <th className="px-2 py-1.5 text-left">原因</th>
+                                </tr>
+                              </thead>
+                              <tbody className="font-mono text-white/70 divide-y divide-white/5">
+                                {sanityResult.flagged_rows.slice(0, 200).map((r, i) => (
+                                  <tr key={i} className="hover:bg-white/[.02]">
+                                    <td className="px-2 py-1">{r.the_date || "—"}</td>
+                                    <td className="px-2 py-1">{r.the_hour ?? "—"}</td>
+                                    <td className="px-2 py-1 text-right">{r.gi}</td>
+                                    <td className="px-2 py-1 text-right">{r.tm ?? "—"}</td>
+                                    <td className="px-2 py-1 text-right">{r.eac}</td>
+                                    <td className="px-2 py-1 text-right text-blue-300/80">{r.expected}</td>
+                                    <td className="px-2 py-1 text-yellow-300/80">{(r.reasons || []).join(", ")}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <p className="text-[11px] text-white/40 mt-3 italic">
+                      此檢查為輔助判斷，不會阻擋後續清洗與訓練流程。若異常比例偏高，建議先檢查感測器、單位（W/m² vs kW/m²）與時間對齊。
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

@@ -543,12 +543,15 @@ def save_cleaned_data(payload: dict, db: Session = Depends(get_db)):
 
     upload_id = entries[0].upload_id
 
+    removed_ratio = (before_rows - after_rows) / before_rows if before_rows > 0 else 0.0
+
     after = AfterData(
         site_id=site_id,
         upload_id=upload_id,
         after_name=f"{file_name}_site_{site_id}_cleaned",
         before_rows=before_rows,
         after_rows=after_rows,
+        removed_ratio=removed_ratio,
         outlier_method=outlier_method if outlier_method != "none" else None,
         gi_tm_applied=apply_gi_tm,
         outlier_params=outlier_params,
@@ -556,8 +559,14 @@ def save_cleaned_data(payload: dict, db: Session = Depends(get_db)):
     )
 
     db.add(after)
-    db.commit()
-    db.refresh(after)
+    try:
+        db.commit()
+        db.refresh(after)
+    except Exception as e:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"儲存失敗: {str(e)}")
 
     return safe_json(
         {

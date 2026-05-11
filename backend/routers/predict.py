@@ -333,7 +333,9 @@ def _predict_with_model(artifact_path: Path, meta: dict, X: np.ndarray):
 @router.post("/predict-file-multi")
 async def predict_file_multi(
     file: UploadFile = File(...),
-    model_ids: str = Form(...),          # 逗號分隔的 model_id，例如 "1,5,12"
+    model_ids: str = Form(""),           # 逗號分隔的 model_id，可留空（純物理式時）
+    physics_kwp: Optional[float] = Form(None),
+    physics_pr: Optional[float] = Form(None),
     db: Session = Depends(get_db),
 ):
     # 1. 解析 model_ids
@@ -341,8 +343,11 @@ async def predict_file_multi(
         id_list = [int(x.strip()) for x in model_ids.split(",") if x.strip()]
     except ValueError:
         raise HTTPException(status_code=400, detail="model_ids 格式錯誤，請用逗號分隔整數")
-    if not id_list:
-        raise HTTPException(status_code=400, detail="至少需要選擇一個模型")
+
+    use_physics = physics_kwp is not None and physics_kwp > 0
+
+    if not id_list and not use_physics:
+        raise HTTPException(status_code=400, detail="至少需要選擇一個模型（或啟用物理式估算）")
 
     # 2. 查詢所有模型紀錄
     models = []
@@ -519,6 +524,77 @@ async def predict_file_multi(
             "total_actual_eac": total_act,
             "avg_error_pct": wmape,
             "avg_error_abs": mae,
+        })
+
+    # 5.5 物理式估算（偽模型，model_id=0、type=physics）
+    if use_physics:
+        from routers.physics import compute_physics_eac, DEFAULT_PR
+        pr_val = float(physics_pr) if physics_pr is not None else DEFAULT_PR
+        kwp_val = float(physics_kwp)
+        pred_col = "pred_physics_0"
+        err_col = "err_physics_0"
+        eabs_col = "eabs_physics_0"
+        pred_columns.extend([pred_col, err_col, eabs_col])
+
+        gi_col = next((c for c in ['GI', 'gi', 'Gi'] if c in df.columns), None)
+        tm_col = next((c for c in ['TM', 'tm', 'Tm'] if c in df.columns), None)
+        eac_col = next((c for c in ['EAC', 'eac', 'Eac'] if c in df.columns), None)
+
+        pred_vals_p, err_vals_p, eabs_vals_p = [], [], []
+        sum_abs_diff = sum_abs_err = sum_abs_act = 0.0
+        n_with_act = 0
+        valid_preds_p = []
+        total_act_p = 0.0
+        n_act = 0
+
+        for i, row in df.iterrows():
+            try:
+                gi_v = float(row[gi_col]) if gi_col and not pd.isna(row[gi_col]) else None
+            except Exception:
+                gi_v = None
+            try:
+                tm_v = float(row[tm_col]) if tm_col and not pd.isna(row[tm_col]) else None
+            except Exception:
+                tm_v = None
+            if gi_v is None:
+                pred_vals_p.append(None)
+                err_vals_p.append(None)
+                eabs_vals_p.append(None)
+                continue
+            pv = round(compute_physics_eac(gi_v, tm_v, kwp_val, pr=pr_val), 4)
+            pred_vals_p.append(pv)
+            valid_preds_p.append(pv)
+            ep = ea = None
+            if eac_col and not pd.isna(row[eac_col]):
+                act = float(row[eac_col])
+                total_act_p += act
+                n_act += 1
+                ea = round(pv - act, 4)
+                sum_abs_diff += abs(pv - act)
+                n_with_act += 1
+                if act != 0:
+                    sum_abs_err += abs(pv - act)
+                    sum_abs_act += abs(act)
+                    ep = round((pv - act) / abs(act) * 100, 2)
+                elif pv == 0:
+                    ep = 0.0
+            err_vals_p.append(ep)
+            eabs_vals_p.append(ea)
+
+        all_predictions[pred_col] = pred_vals_p
+        all_predictions[err_col] = err_vals_p
+        all_predictions[eabs_col] = eabs_vals_p
+
+        models_summary.append({
+            "model_id": 0,
+            "model_type": "physics",
+            "status": "ok",
+            "total_predicted_eac": round(sum(valid_preds_p), 2) if valid_preds_p else None,
+            "total_actual_eac": round(total_act_p, 2) if n_act > 0 else None,
+            "avg_error_pct": round(sum_abs_err / sum_abs_act * 100, 2) if sum_abs_act > 0 else None,
+            "avg_error_abs": round(sum_abs_diff / n_with_act, 4) if n_with_act > 0 else None,
+            "physics_kwp": kwp_val,
+            "physics_pr": pr_val,
         })
 
     # 6. 組合 rows_out

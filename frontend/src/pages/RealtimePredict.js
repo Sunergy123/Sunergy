@@ -151,6 +151,11 @@ export default function RealtimePredict({
   const [error, setError] = useState('');
   const [errorMode, setErrorMode] = useState('pct');
 
+  // 物理式估算（pseudo-model）
+  const [physicsEnabled, setPhysicsEnabled] = useState(false);
+  const [physicsKwp, setPhysicsKwp] = useState('');
+  const [physicsPr, setPhysicsPr] = useState('0.80');
+
   // realtime polling state
   const [isListening, setIsListening] = useState(false);
   const [result, setResult] = useState(null);  // { mode, columns, rows, total_rows, models_summary }
@@ -200,11 +205,19 @@ export default function RealtimePredict({
   };
 
   // ── 拉一次資料（增量或全量取決於 cursor）──
-  const fetchOnce = useCallback(async (modelIds, sinceOverride) => {
-    if (!modelIds || modelIds.length === 0) return;
+  const fetchOnce = useCallback(async (modelIds, sinceOverride, physicsCfg) => {
+    const hasPhysics = !!(physicsCfg && physicsCfg.enabled && Number(physicsCfg.kwp) > 0);
+    if ((!modelIds || modelIds.length === 0) && !hasPhysics) return;
     const since = sinceOverride !== undefined ? sinceOverride : cursorRef.current;
     try {
-      const url = `${API_BASE}/realtime/feed?model_ids=${modelIds.join(',')}&since=${since}`;
+      const params = new URLSearchParams();
+      params.set('model_ids', (modelIds || []).join(','));
+      params.set('since', String(since));
+      if (hasPhysics) {
+        params.set('physics_kwp', String(Number(physicsCfg.kwp)));
+        params.set('physics_pr', String(Number(physicsCfg.pr) || 0.80));
+      }
+      const url = `${API_BASE}/realtime/feed?${params.toString()}`;
       const res = await fetch(url);
       const json = await res.json();
       if (!res.ok) throw new Error(json?.detail || '即時資料讀取失敗');
@@ -242,17 +255,25 @@ export default function RealtimePredict({
 
   // ── 開始 / 暫停監聽 ──
   const startListening = async () => {
-    if (selectedModelIds.length === 0) {
-      alert('請先選擇至少一個模型');
+    if (selectedModelIds.length === 0 && !physicsEnabled) {
+      alert('請先選擇至少一個模型（或啟用物理式估算）');
       return;
+    }
+    if (physicsEnabled) {
+      const k = Number(physicsKwp);
+      if (!Number.isFinite(k) || k <= 0) {
+        alert('物理式估算需要填入有效的裝置容量 (kWp)');
+        return;
+      }
     }
     setError('');
     cursorRef.current = 0;            // 第一拉取整個 buffer
     setResult(null);
     setIsListening(true);
-    await fetchOnce(selectedModelIds, 0);
+    const physicsCfg = { enabled: physicsEnabled, kwp: physicsKwp, pr: physicsPr };
+    await fetchOnce(selectedModelIds, 0, physicsCfg);
     pollTimerRef.current = setInterval(() => {
-      fetchOnce(selectedModelIds);
+      fetchOnce(selectedModelIds, undefined, physicsCfg);
     }, 1000);
   };
 
@@ -270,15 +291,19 @@ export default function RealtimePredict({
     };
   }, []);
 
-  // ── 監聽中切換模型 → 重置 cursor，重新從頭拉一次（讓新模型對所有 buffer 重算） ──
+  // ── 監聽中切換模型或物理式設定 → 重置 cursor，重啟輪詢（讓新設定對所有 buffer 重算） ──
   useEffect(() => {
     if (!isListening) return;
     cursorRef.current = 0;
     setResult(null);
-    fetchOnce(selectedModelIds, 0);
-    // 不需重設 interval，下一輪 tick 會用新的 selectedModelIds
+    const physicsCfg = { enabled: physicsEnabled, kwp: physicsKwp, pr: physicsPr };
+    fetchOnce(selectedModelIds, 0, physicsCfg);
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    pollTimerRef.current = setInterval(() => {
+      fetchOnce(selectedModelIds, undefined, physicsCfg);
+    }, 1000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedModelIds.join(',')]);
+  }, [selectedModelIds.join(','), physicsEnabled, physicsKwp, physicsPr]);
 
   // ── 清除後端緩衝 ──
   const handleClearBuffer = async () => {
@@ -407,6 +432,9 @@ export default function RealtimePredict({
     if (col === 'predicted_EAC') return '預測 EAC';
     if (col === 'error_pct') return '誤差%';
     if (col === 'error_abs') return '誤差 kW';
+    if (col === 'pred_physics_0') return '預測 物理式';
+    if (col === 'err_physics_0') return '誤差% 物理式';
+    if (col === 'eabs_physics_0') return '誤差kW 物理式';
     if (col.startsWith('pred_')) {
       const parts = col.replace('pred_', '').split('_');
       return `預測 ${parts.slice(0, -1).join('_')}`;
@@ -543,6 +571,63 @@ export default function RealtimePredict({
                 </div>
 
                 <div className="max-h-[280px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                  {/* 物理式估算（偽模型，永遠在最上面） */}
+                  <label
+                    className={`flex items-start gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all border ${
+                      physicsEnabled
+                        ? 'bg-blue-500/[0.10] border-blue-400/40 shadow-[0_0_12px_rgba(96,165,250,0.12)]'
+                        : 'border-white/5 hover:bg-white/[0.03] hover:border-white/10'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={physicsEnabled}
+                      onChange={(e) => setPhysicsEnabled(e.target.checked)}
+                      className="accent-blue-400 size-4 rounded mt-0.5"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-xs font-black px-2 py-0.5 rounded ${physicsEnabled ? 'bg-blue-400/20 text-blue-300' : 'bg-white/5 text-white/50'}`}>
+                          PHYSICS
+                        </span>
+                        <span className="text-[10px] bg-white/10 text-white/60 px-1.5 py-0.5 rounded">
+                          無需歷史資料
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-white/40 mt-0.5">
+                        物理式估算（GI × kWp × PR）
+                      </p>
+                      {physicsEnabled && (
+                        <div className="mt-2 flex flex-wrap gap-2 items-center" onClick={(e) => e.preventDefault()}>
+                          <label className="flex items-center gap-1 text-[11px] text-white/60">
+                            <span>容量 kWp</span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              value={physicsKwp}
+                              onChange={(e) => setPhysicsKwp(e.target.value)}
+                              placeholder="10"
+                              className="w-20 bg-black/30 border border-white/10 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-400"
+                            />
+                          </label>
+                          <label className="flex items-center gap-1 text-[11px] text-white/60">
+                            <span>PR</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0.1"
+                              max="1"
+                              value={physicsPr}
+                              onChange={(e) => setPhysicsPr(e.target.value)}
+                              className="w-16 bg-black/30 border border-white/10 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-400"
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
                   {trainedModels.length === 0 && (
                     <p className="text-sm text-white/20 italic py-4 text-center">尚無可用模型</p>
                   )}
@@ -581,8 +666,13 @@ export default function RealtimePredict({
                       );
                     })}
                 </div>
-                {selectedModelIds.length > 0 && (
-                  <p className="text-sm text-primary/60 mt-2 font-bold">已選 {selectedModelIds.length} 個模型</p>
+                {(selectedModelIds.length > 0 || physicsEnabled) && (
+                  <p className="text-sm text-primary/60 mt-2 font-bold">
+                    已選 {selectedModelIds.length + (physicsEnabled ? 1 : 0)} 個模型
+                    {physicsEnabled && selectedModelIds.length === 0 && (
+                      <span className="text-blue-300/70 font-normal ml-1">（僅物理式）</span>
+                    )}
+                  </p>
                 )}
               </div>
             </div>
@@ -591,7 +681,7 @@ export default function RealtimePredict({
               {!isListening ? (
                 <button
                   onClick={startListening}
-                  disabled={selectedModelIds.length === 0}
+                  disabled={selectedModelIds.length === 0 && !physicsEnabled}
                   className="w-full bg-primary text-background-dark py-4 rounded-2xl font-black text-base hover:scale-[1.02] active:scale-95 transition-all shadow-[0_10px_30px_rgba(242,204,13,0.2)] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                   開始即時監聽

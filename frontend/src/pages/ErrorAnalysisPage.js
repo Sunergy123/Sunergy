@@ -148,31 +148,37 @@ const LineChart = ({ series, xLabels, yMax: yMaxProp, warnThreshold, dangerThres
   const [view, setView] = useState(null); // null = 自動
 
   const n = xLabels.length;
-  const dataMax = useMemo(
-    () => Math.max(0, ...series.flatMap(s => s.data.map(d => d ?? 0))),
+  const allValues = useMemo(
+    () => series.flatMap(s => s.data.filter(d => d !== null && d !== undefined)).map(Number).filter(v => !isNaN(v)),
     [series]
   );
-  const autoMaxY = yMaxProp || Math.max(dangerThreshold * 1.5, dataMax * 1.15);
+  const dataMax = allValues.length ? Math.max(...allValues) : 1;
+  const dataMin = allValues.length ? Math.min(...allValues) : 0;
+  // Y 軸上下限直接取資料最大值與最小值（不加邊距）
+  const autoMaxY = yMaxProp || dataMax;
+  const autoMinY = dataMin;
 
   // 資料變動時重設 view
-  useEffect(() => { setView(null); }, [n, autoMaxY]);
+  useEffect(() => { setView(null); }, [n, autoMaxY, autoMinY]);
 
   // 同步最新 ctx 給 wheel listener
-  useEffect(() => { ctxRef.current = { n, autoMaxY }; }, [n, autoMaxY]);
+  useEffect(() => { ctxRef.current = { n, autoMaxY, autoMinY }; }, [n, autoMaxY, autoMinY]);
 
   // 當前 view bounds（view 為 null 時用自動範圍）
   const xStart  = view?.xStart ?? 0;
   const xEnd    = view?.xEnd   ?? Math.max(0, n - 1);
-  const yMinV   = view?.yMin   ?? 0;
+  const yMinV   = view?.yMin   ?? autoMinY;
   const yMaxV   = view?.yMax   ?? autoMaxY;
   const isZoomed = view !== null;
 
   const xPos = (i) =>
     xEnd === xStart ? PAD.left + innerW / 2
     : PAD.left + ((i - xStart) / (xEnd - xStart)) * innerW;
-  const yPos = (v) =>
-    yMaxV === yMinV ? PAD.top + innerH / 2
-    : PAD.top + innerH - ((v - yMinV) / (yMaxV - yMinV)) * innerH;
+  const yPos = (v) => {
+    if (yMaxV === yMinV) return PAD.top + innerH / 2;
+    const raw = PAD.top + innerH - ((v - yMinV) / (yMaxV - yMinV)) * innerH;
+    return Math.max(PAD.top, Math.min(PAD.top + innerH, raw));
+  };
 
   // Y 軸刻度：依當前 view range 動態
   const yTicks = useMemo(() => {
@@ -239,11 +245,16 @@ const LineChart = ({ series, xLabels, yMax: yMaxProp, warnThreshold, dangerThres
       const yRange = v0.yMax - v0.yMin;
       const dxView = -dxPx / innerW * xRange;
       const dyView =  dyPx / innerH * yRange;
+      let newYMin = v0.yMin + dyView;
+      let newYMax = v0.yMax + dyView;
+      // 平移時 Y 軸不能超出資料範圍
+      if (newYMin < autoMinY) { newYMax += (autoMinY - newYMin); newYMin = autoMinY; }
+      if (newYMax > autoMaxY) { newYMin -= (newYMax - autoMaxY); newYMax = autoMaxY; }
       setView({
         xStart: v0.xStart + dxView,
         xEnd:   v0.xEnd   + dxView,
-        yMin:   v0.yMin   + dyView,
-        yMax:   v0.yMax   + dyView,
+        yMin:   newYMin,
+        yMax:   newYMax,
       });
       return;
     }
@@ -277,13 +288,18 @@ const LineChart = ({ series, xLabels, yMax: yMaxProp, warnThreshold, dangerThres
       const py = (e.clientY - rect.top)  / rect.height * H;
       const factor = e.deltaY < 0 ? 0.85 : 1.18;
       setView(prev => {
-        const cur = prev || { xStart: 0, xEnd: Math.max(0, ctx.n - 1), yMin: 0, yMax: ctx.autoMaxY };
+        const cur = prev || { xStart: 0, xEnd: Math.max(0, ctx.n - 1), yMin: ctx.autoMinY ?? 0, yMax: ctx.autoMaxY };
         const cursorX = cur.xStart + (px - PAD.left) / innerW * (cur.xEnd - cur.xStart);
         const cursorY = cur.yMax - (py - PAD.top) / innerH * (cur.yMax - cur.yMin);
         const newXStart = cursorX - (cursorX - cur.xStart) * factor;
         const newXEnd   = cursorX + (cur.xEnd - cursorX) * factor;
-        const newYMin   = cursorY - (cursorY - cur.yMin) * factor;
-        const newYMax   = cursorY + (cur.yMax - cursorY) * factor;
+        let newYMin   = cursorY - (cursorY - cur.yMin) * factor;
+        let newYMax   = cursorY + (cur.yMax - cursorY) * factor;
+        // Y 軸不允許縮小超過資料範圍（clamp to [autoMinY, autoMaxY]）
+        newYMin = Math.max(newYMin, ctx.autoMinY ?? 0);
+        newYMax = Math.min(newYMax, ctx.autoMaxY);
+        // 若縮放後範圍反轉或過窄則保持原樣
+        if (newYMax - newYMin < (ctx.autoMaxY - (ctx.autoMinY ?? 0)) * 0.001) return cur;
         return { xStart: newXStart, xEnd: newXEnd, yMin: newYMin, yMax: newYMax };
       });
     };
@@ -740,15 +756,57 @@ export default function ErrorAnalysisPage({
     return [...set].sort();
   }, [allRows]);
 
+  /* ── 所有可用週（YYYY-Www，ISO 週）清單 ── */
+  const allWeeks = useMemo(() => {
+    const set = new Set();
+    allRows.forEach(row => {
+      const dt = parseDatetime(getRowDatetime(row));
+      if (dt && dt.year && dt.month && dt.day) {
+        const d = new Date(dt.year, dt.month - 1, dt.day);
+        // ISO week: Thursday-based
+        const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+        const isoYear = tmp.getUTCFullYear();
+        const startOfYear = new Date(Date.UTC(isoYear, 0, 1));
+        const weekNo = Math.ceil((((tmp - startOfYear) / 86400000) + 1) / 7);
+        set.add(`${isoYear}-W${String(weekNo).padStart(2, '0')}`);
+      }
+    });
+    return [...set].sort();
+  }, [allRows]);
+
+  /* ── 週 label → [startDate, endDate] (YYYY-MM-DD) ── */
+  const weekToDateRange = (weekStr) => {
+    const m = weekStr.match(/^(\d{4})-W(\d{2})$/);
+    if (!m) return null;
+    const year = +m[1], week = +m[2];
+    // ISO: 第 1 週包含 1/4
+    const jan4 = new Date(Date.UTC(year, 0, 4));
+    const dow = jan4.getUTCDay() || 7; // 1=Mon
+    const weekStart = new Date(jan4);
+    weekStart.setUTCDate(jan4.getUTCDate() - (dow - 1) + (week - 1) * 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
+    const fmt = d => `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+    return { start: fmt(weekStart), end: fmt(weekEnd) };
+  };
+
+  /* ── 範圍單位：月 or 週 ── */
+  const [rangeUnit, setRangeUnit] = useState('month'); // 'month' | 'week'
   const [rangeStart, setRangeStart] = useState('');
   const [rangeEnd, setRangeEnd] = useState('');
 
   useEffect(() => {
-    if (allYearMonths.length) {
+    if (rangeUnit === 'month' && allYearMonths.length) {
       setRangeStart(allYearMonths[0]);
       setRangeEnd(allYearMonths[allYearMonths.length - 1]);
+    } else if (rangeUnit === 'week' && allWeeks.length) {
+      setRangeStart(allWeeks[0]);
+      setRangeEnd(allWeeks[allWeeks.length - 1]);
     }
-  }, [allYearMonths]);
+  }, [rangeUnit, allYearMonths, allWeeks]);
+
+  const rangeOptions = rangeUnit === 'month' ? allYearMonths : allWeeks;
 
   /* ── 所有可用日期（YYYY-MM-DD）清單 ── */
   const allDays = useMemo(() => {
@@ -807,13 +865,29 @@ export default function ErrorAnalysisPage({
       if (!rangeStart || !rangeEnd) return allRows;
       if (rangeStart === '小時資料') return allRows;
 
+      // 週模式：將週轉換為具體日期區間比較
+      if (rangeUnit === 'week') {
+        const s = weekToDateRange(rangeStart);
+        const e = weekToDateRange(rangeEnd);
+        if (!s || !e) return allRows;
+        return allRows.filter(row => {
+          const dt = parseDatetime(getRowDatetime(row));
+          if (dt && dt.year && dt.month && dt.day) {
+            const d = `${dt.year}-${String(dt.month).padStart(2, '0')}-${String(dt.day).padStart(2, '0')}`;
+            return d >= s.start && d <= e.end;
+          }
+          return true;
+        });
+      }
+
+      // 月模式（原邏輯）
       return allRows.filter(row => {
         const dt = parseDatetime(getRowDatetime(row));
         if (dt && dt.year && dt.month) {
           const ym = `${dt.year}-${String(dt.month).padStart(2, '0')}`;
           return ym >= rangeStart && ym <= rangeEnd;
         }
-        return true; // 沒有 datetime 的資料也保留
+        return true;
       });
     }
 
@@ -837,28 +911,49 @@ export default function ErrorAnalysisPage({
         return true;
       });
     });
-  }, [allRows, timeMode, rangeStart, rangeEnd, selectedDay, addedPoints, errCols]);
+  }, [allRows, timeMode, rangeUnit, rangeStart, rangeEnd, selectedDay, addedPoints, errCols]);
 
   /* ── 折線圖資料 ── */
   const chartData = useMemo(() => {
     if (!filteredRows.length) return { xLabels: [], series: [] };
 
+    // 連續時段（非單日）：每日只保留一筆，避免 X 軸重複
+    if (timeMode === 'range' && !selectedDay) {
+      const dayMap = new Map(); // dateKey → row
+      filteredRows.forEach(row => {
+        const dt = parseDatetime(getRowDatetime(row));
+        if (!dt || !dt.year) return;
+        const key = `${dt.year}/${String(dt.month).padStart(2,'0')}/${String(dt.day).padStart(2,'0')}`;
+        if (!dayMap.has(key)) {
+          dayMap.set(key, row);
+        } else if (dt.hour === 5) {
+          dayMap.set(key, row); // 優先以 05:00 為基準
+        }
+      });
+      const sortedKeys = [...dayMap.keys()].sort();
+      const dedupRows = sortedKeys.map(k => dayMap.get(k));
+      const series = seriesMeta.map(sm => ({
+        label: sm.label,
+        color: sm.color,
+        data: dedupRows.map(row => {
+          const v = row[sm.col];
+          if (v === null || v === undefined) return null;
+          const n = Number(v);
+          return isNaN(n) ? null : Math.abs(n);
+        }),
+      }));
+      return { xLabels: sortedKeys, series };
+    }
+
     const xLabels = filteredRows.map(row => {
       const dt = parseDatetime(getRowDatetime(row));
-      if (timeMode === 'range') {
-        // 選了特定日 → X 軸改顯示時段
-        if (selectedDay) {
-          const h = dt?.hour ?? getRowHour(row);
-          return h !== null ? `${String(h).padStart(2, '0')}:00` : '';
-        }
-        // 連續時段：只顯示年/月/日，資料以每日 05:00 為基準
-        if (dt) return `${dt.year}/${String(dt.month).padStart(2,'0')}/${String(dt.day).padStart(2,'0')}`;
-        return String(getRowHour(row) ?? '');
+      if (timeMode === 'range' && selectedDay) {
+        const h = dt?.hour ?? getRowHour(row);
+        return h !== null ? `${String(h).padStart(2, '0')}:00` : '';
       } else {
-        // 特定時間點：顯示 月/日 時:00
         if (dt) return `${dt.month}/${dt.day} ${String(dt.hour ?? 5).padStart(2,'0')}:00`;
         const h = getRowHour(row);
-        return h !== null ? `${String(h).padStart(2,'00')}:00` : '';
+        return h !== null ? `${String(h).padStart(2,'0')}:00` : '';
       }
     });
 
@@ -869,8 +964,7 @@ export default function ErrorAnalysisPage({
         const v = row[sm.col];
         if (v === null || v === undefined) return null;
         const n = Number(v);
-        if (isNaN(n)) return null;
-        return Math.abs(n); // 折線圖以絕對值顯示，方便對照門檻
+        return isNaN(n) ? null : Math.abs(n);
       }),
     }));
 
@@ -1083,30 +1177,52 @@ export default function ErrorAnalysisPage({
                 {/* 對應控件 */}
                 {timeMode === 'range' ? (
                   <div className="space-y-3">
+                    {/* 年月 / 週 切換 */}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-[10px] text-white/40 font-bold uppercase tracking-widest">區間單位</span>
+                      <div className="flex gap-1 bg-white/[0.03] p-0.5 rounded-lg border border-white/10">
+                        {[
+                          { id: 'month', label: '月', icon: 'calendar_month' },
+                          { id: 'week',  label: '週', icon: 'view_week' },
+                        ].map(u => (
+                          <button key={u.id} onClick={() => { setRangeUnit(u.id); setSelectedDay(null); }}
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${rangeUnit === u.id ? 'bg-primary text-background-dark shadow' : 'text-white/40 hover:text-white/70'}`}>
+                            <span className="material-symbols-outlined !text-sm">{u.icon}</span>
+                            {u.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* 年月區間選擇 */}
                     <div className="flex flex-wrap items-center gap-3">
                       <div className="flex items-center gap-2">
                         <select value={rangeStart} onChange={e => { setRangeStart(e.target.value); setSelectedDay(null); }}
                           className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-primary/50 focus:outline-none min-w-[120px]">
-                          {allYearMonths.map(ym => (
+                          {rangeOptions.map(ym => (
                             <option key={ym} value={ym} className="bg-[#111] text-white">{ym}</option>
                           ))}
                         </select>
                         <span className="material-symbols-outlined !text-base text-white/30">arrow_forward</span>
                         <select value={rangeEnd} onChange={e => { setRangeEnd(e.target.value); setSelectedDay(null); }}
                           className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-primary/50 focus:outline-none min-w-[120px]">
-                          {allYearMonths.filter(ym => ym >= rangeStart).map(ym => (
+                          {rangeOptions.filter(ym => ym >= rangeStart).map(ym => (
                             <option key={ym} value={ym} className="bg-[#111] text-white">{ym}</option>
                           ))}
                         </select>
                       </div>
                       <div className="h-5 w-px bg-white/10 mx-1" />
                       <div className="flex gap-1.5 flex-wrap">
-                        {[
-                          { label: '全部', fn: () => { setRangeStart(allYearMonths[0]); setRangeEnd(allYearMonths[allYearMonths.length - 1]); setSelectedDay(null); } },
-                          { label: '近 3 月', fn: () => { const e = allYearMonths[allYearMonths.length - 1]; setRangeEnd(e); setRangeStart(allYearMonths[Math.max(0, allYearMonths.length - 3)]); setSelectedDay(null); } },
-                          { label: '近 6 月', fn: () => { const e = allYearMonths[allYearMonths.length - 1]; setRangeEnd(e); setRangeStart(allYearMonths[Math.max(0, allYearMonths.length - 6)]); setSelectedDay(null); } },
-                        ].map(({ label, fn }) => (
+                        {(rangeUnit === 'month' ? [
+                          { label: '全部', fn: () => { setRangeStart(rangeOptions[0]); setRangeEnd(rangeOptions[rangeOptions.length - 1]); setSelectedDay(null); } },
+                          { label: '近 3 月', fn: () => { const e = rangeOptions[rangeOptions.length - 1]; setRangeEnd(e); setRangeStart(rangeOptions[Math.max(0, rangeOptions.length - 3)]); setSelectedDay(null); } },
+                          { label: '近 6 月', fn: () => { const e = rangeOptions[rangeOptions.length - 1]; setRangeEnd(e); setRangeStart(rangeOptions[Math.max(0, rangeOptions.length - 6)]); setSelectedDay(null); } },
+                        ] : [
+                          { label: '全部', fn: () => { setRangeStart(rangeOptions[0]); setRangeEnd(rangeOptions[rangeOptions.length - 1]); setSelectedDay(null); } },
+                          { label: '近 1 週', fn: () => { const e = rangeOptions[rangeOptions.length - 1]; setRangeEnd(e); setRangeStart(rangeOptions[Math.max(0, rangeOptions.length - 1)]); setSelectedDay(null); } },
+                          { label: '近 2 週', fn: () => { const e = rangeOptions[rangeOptions.length - 1]; setRangeEnd(e); setRangeStart(rangeOptions[Math.max(0, rangeOptions.length - 2)]); setSelectedDay(null); } },
+                          { label: '近 4 週', fn: () => { const e = rangeOptions[rangeOptions.length - 1]; setRangeEnd(e); setRangeStart(rangeOptions[Math.max(0, rangeOptions.length - 4)]); setSelectedDay(null); } },
+                        ]).map(({ label, fn }) => (
                           <button key={label} onClick={fn}
                             className="px-3 py-1.5 text-[10px] font-bold rounded-lg border border-white/10 text-white/40 hover:bg-white/5 hover:text-white/70 transition-all">
                             {label}
@@ -1298,7 +1414,9 @@ export default function ErrorAnalysisPage({
                         : '特定時間點誤差折線圖'
                     }
                     baseHourNote={
-                      timeMode === 'range' && !selectedDay
+                      timeMode === 'range' && !selectedDay && rangeUnit === 'week'
+                        ? '本圖以每日 05:00 資料為基準，橫軸顯示年/月/日（週篩選）'
+                        : timeMode === 'range' && !selectedDay
                         ? '本圖以每日 05:00 資料為基準，橫軸顯示年/月/日'
                         : timeMode === 'range' && selectedDay
                         ? `顯示 ${selectedDay} 當日各時段誤差，橫軸為時段`

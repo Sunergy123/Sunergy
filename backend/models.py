@@ -100,7 +100,6 @@ class AfterData(Base):
     after_name = Column(String, nullable=False)
     before_rows = Column(Integer, nullable=False)
     after_rows = Column(Integer, nullable=False)
-    removed_ratio = Column(Float, nullable=False)
     outlier_method = Column(String, nullable=True)
     gi_tm_applied = Column(Boolean, nullable=False)
     outlier_params = Column(JSONB, nullable=True)
@@ -115,28 +114,33 @@ class AfterData(Base):
 # ======================
 class TrainedModel(Base):
     __tablename__ = "trained_model"
-
+ 
     model_id = Column(Integer, primary_key=True, index=True)
-
+ 
     upload_id = Column(Integer, ForeignKey("upload.upload_id"), nullable=True)
-    after_id = Column(Integer, ForeignKey("after_data.after_id"), nullable=True)
-
-    model_type = Column(String, nullable=False)
-    parameters = Column(JSONB, nullable=True)
-    file_path = Column(String, nullable=True)
-    trained_at = Column(DateTime, default=datetime.utcnow)
+    after_id  = Column(Integer, ForeignKey("after_data.after_id"), nullable=True)
+ 
+    model_type  = Column(String, nullable=False)
+    parameters  = Column(JSONB, nullable=True)
+    file_path   = Column(String, nullable=True)
+    trained_at  = Column(DateTime, default=datetime.utcnow)
     usage_count = Column(Integer, default=0)
-
-    rmse = Column(Float, nullable=True)
-    r2 = Column(Float, nullable=True)
-    mae = Column(Float, nullable=True)
+ 
+    rmse  = Column(Float, nullable=True)
+    r2    = Column(Float, nullable=True)
+    mae   = Column(Float, nullable=True)
     wmape = Column(Float, nullable=True)
-
-    metrics = Column(JSONB, nullable=True)
-
+ 
+    metrics   = Column(JSONB, nullable=True)
+    is_public = Column(Boolean, default=False)
+ 
     __table_args__ = (
         CheckConstraint(
-            "(upload_id IS NOT NULL AND after_id IS NULL) OR (upload_id IS NULL AND after_id IS NOT NULL)",
+            """
+            (upload_id IS NOT NULL AND after_id IS NULL)
+            OR (upload_id IS NULL AND after_id IS NOT NULL)
+            OR (upload_id IS NULL AND after_id IS NULL AND is_public = TRUE)
+            """,
             name="check_data_source"
         ),
     )

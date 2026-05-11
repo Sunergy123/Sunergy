@@ -112,6 +112,12 @@ def delete_trained_model(
 
     model, site, after, site_data = row
 
+    if model.is_public:
+        raise HTTPException(
+            status_code=403,
+            detail="公用模型不可刪除"
+        )
+
     # 刪除模型檔案
     if model.file_path:
         base_dir = Path(__file__).resolve().parent.parent
@@ -141,49 +147,111 @@ def list_trained_models(
         .order_by(TrainedModel.trained_at.desc())
         .all()
     )
-
+ 
     out = []
-
+ 
     for model in models:
         site = None
         file_name = "未知檔案"
-
+ 
         if model.after_id:
-            after = db.query(AfterData).filter(AfterData.after_id == model.after_id).first()
+            after = db.query(AfterData).filter(
+                AfterData.after_id == model.after_id
+            ).first()
             if after:
-                site = db.query(Site).filter(Site.site_id == after.site_id).first()
+                site = db.query(Site).filter(
+                    Site.site_id == after.site_id
+                ).first()
                 file_name = after.after_name
-
+ 
         elif model.upload_id:
-            site_data = db.query(SiteData).filter(SiteData.upload_id == model.upload_id).first()
+            site_data = db.query(SiteData).filter(
+                SiteData.upload_id == model.upload_id
+            ).first()
             if site_data:
-                site = db.query(Site).filter(Site.site_id == site_data.site_id).first()
-                file_name = site_data.data_name
-
-        # 🔥 只保留該使用者
-        if not site or site.user_id != user_id:
+                site = db.query(Site).filter(
+                    Site.site_id == site_data.site_id
+                ).first()
+                file_name = site_data.data_name or "CPC_D414Z01.xlsx"
+ 
+        # ── 公用基礎模型（site 可能為 None）直接放行 ──────────
+        if model.is_public and not site:
+            out.append({
+                "model_id":    model.model_id,
+                "model_type":  model.model_type,
+                "parameters":  model.parameters,
+                "file_path":   model.file_path,
+                "trained_at":  model.trained_at.isoformat() if model.trained_at else None,
+ 
+                "site_name":   "基礎模型",
+                "location":    "CPC_D414Z01",
+ 
+                "file_name":   "CPC_D414Z01.xlsx",
+                "rmse":        model.rmse,
+                "r2":          model.r2,
+                "mae":         model.mae,
+                "wmape":       model.wmape,
+ 
+                "usage_count": model.usage_count or 0,
+                "is_public":   model.is_public,
+            })
             continue
-
+ 
+        # ── 沒有 site 且非公用 → 跳過 ─────────────────────────
+        if not site:
+            continue
+ 
+        # ── 其他人的私有模型 → 跳過 ───────────────────────────
+        if site.user_id != user_id and not model.is_public:
+            continue
+ 
         out.append({
-            "model_id": model.model_id,
-            "model_type": model.model_type,
-            "parameters": model.parameters,
-            "file_path": model.file_path,
-            "trained_at": model.trained_at.isoformat() if model.trained_at else None,
-
-            "site_name": site.site_name if site else None,
-            "location": site.location if site else None,
-
-            "file_name": file_name,
-            "rmse": model.rmse,
-            "r2": model.r2,
-            "mae": model.mae,
-            "wmape": model.wmape,
-
+            "model_id":    model.model_id,
+            "model_type":  model.model_type,
+            "parameters":  model.parameters,
+            "file_path":   model.file_path,
+            "trained_at":  model.trained_at.isoformat() if model.trained_at else None,
+ 
+            "site_name":   site.site_name if site else None,
+            "location":    site.location  if site else None,
+ 
+            "file_name":   file_name,
+            "rmse":        model.rmse,
+            "r2":          model.r2,
+            "mae":         model.mae,
+            "wmape":       model.wmape,
+ 
             "usage_count": model.usage_count or 0,
+            "is_public":   model.is_public,
         })
-
+ 
     return out
+
+@router.post("/set-public")
+def set_public_models(
+    data: dict,
+    db: Session = Depends(get_db)
+):
+    """訓練完成後，將指定 DB model_id 設為公用（用 model_db_ids 精準更新）"""
+    # 優先使用 model_db_ids: { "XGBoost": 42, "SVR": 43 }
+    model_db_ids = data.get("model_db_ids", {})
+    public_model_types = data.get("public_model_types", [])
+
+    if not model_db_ids:
+        raise HTTPException(status_code=400, detail="缺少 model_db_ids")
+
+    updated = []
+    for model_type, db_id in model_db_ids.items():
+        if model_type not in public_model_types:
+            continue  # 未選為公用，跳過
+        model = db.query(TrainedModel).filter(TrainedModel.model_id == db_id).first()
+        if model:
+            model.is_public = True
+            updated.append(db_id)
+
+    db.commit()
+    return {"updated_model_ids": updated, "message": f"已設定 {len(updated)} 個公用模型"}
+
 
 @router.post("/trained-models/batch-delete")
 def batch_delete_models(data: dict, db: Session = Depends(get_db)):
@@ -213,6 +281,10 @@ def batch_delete_models(data: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="找不到可刪除的模型")
 
     # 刪檔案（跟你單筆一樣）
+    models = [
+        row for row in models
+        if not row[0].is_public
+    ]
     for model, site, after, site_data in models:
         if model.file_path:
             base_dir = Path(__file__).resolve().parent.parent
@@ -634,6 +706,7 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
         if site_id is None:
             raise HTTPException(status_code=400, detail="site_id 為空，無法建立 trained_model")
 
+        saved_models = []
         for art in saved:
             try:
                 model_result = results.get(art.get('model_id'), {})
@@ -648,6 +721,8 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
                     "r2": model_result.get("r2"),
                     "mae": model_result.get("mae"),
                     "wmape": model_result.get("wmape"),
+
+                    "is_public": art.get('model_id') in payload.public_models,
 
                     # ✅ JSON（可選）
                     "metrics": {
@@ -667,17 +742,25 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
 
                 tm = TrainedModel(**tm_data)
                 db.add(tm)
+                saved_models.append({'model_id_key': art.get('model_id'), 'tm': tm})
             except Exception as e:
                 db.rollback()
                 raise HTTPException(status_code=500, detail=f"建立 TrainedModel 失敗: {str(e)}")
 
         try:
             db.commit()
+            # flush 後 tm.model_id 才有值
+            for item in saved_models:
+                db.refresh(item['tm'])
         except Exception as e:
             db.rollback()
             raise HTTPException(status_code=500, detail=f"寫入 trained_model 失敗: {str(e)}")
 
-        db.commit()
+        # 建立 model_type → db model_id 的對照表（供前端 set-public 用）
+        model_db_ids = {
+            item['model_id_key']: item['tm'].model_id
+            for item in saved_models
+        }
 
     warnings = []
     if 'save_errors' in locals() and save_errors:
@@ -696,6 +779,7 @@ def run_training(payload: TrainRequest, db: Session = Depends(get_db)):
         "n_test": int(len(y_test)),
         "feature_cols_used": feature_cols,
         "results": results,
+        "model_db_ids": model_db_ids if 'model_db_ids' in locals() else {},
         "warnings": warnings,
     })
 

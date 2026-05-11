@@ -68,6 +68,7 @@ class TrainRequest(BaseModel):
     time_col: Optional[str] = None
     save_model: bool = True
     device: str = "auto"
+    public_models: List[str] = []
 
 
 class PredictRequest(BaseModel):

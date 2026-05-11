@@ -549,7 +549,6 @@ def save_cleaned_data(payload: dict, db: Session = Depends(get_db)):
         after_name=f"{file_name}_site_{site_id}_cleaned",
         before_rows=before_rows,
         after_rows=after_rows,
-        removed_ratio=(before_rows - after_rows) / before_rows if before_rows > 0 else 0,
         outlier_method=outlier_method if outlier_method != "none" else None,
         gi_tm_applied=apply_gi_tm,
         outlier_params=outlier_params,
@@ -567,10 +566,6 @@ def save_cleaned_data(payload: dict, db: Session = Depends(get_db)):
             "file_name": file_name,
             "before_rows": before_rows,
             "after_rows": after_rows,
-            "removed_ratio": round(
-                (before_rows - after_rows) / before_rows if before_rows > 0 else 0,
-                3,
-            ),
             "after_id": after.after_id,
             "file_path": str(csv_path),
         }

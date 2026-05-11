@@ -660,7 +660,10 @@ export default function DataCleaning({
       setResult({
         before_rows: data.before_rows,
         after_rows: data.after_rows,
-        removed_ratio: data.removed_ratio,
+        removed_ratio:
+          data.before_rows > 0
+            ? (data.before_rows - data.after_rows) / data.before_rows
+            : 0,
       });
       setShowResultModal(true);
 

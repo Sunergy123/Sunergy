@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 
 const CarbonReductionSection = ({ totalGeneration, onOpenModal }) => {
-  // 2024年台灣電力排碳係數假設為 0.494 kgCO₂e/kWh (請依實際需求調整)
-  const carbonFactor = 0.494; 
+  // 2024年台灣電力排碳係數假設為 0.474 kgCO₂e/kWh (請依實際需求調整)
+  const carbonFactor = 0.474; 
   const totalReduction = (totalGeneration * carbonFactor).toFixed(2);
 
   // 新增：控制顯示模式與單價的 State

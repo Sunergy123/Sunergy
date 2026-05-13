@@ -846,7 +846,7 @@ def get_dashboard_stats(
 
     total_eac = query.scalar() or 0
 
-    carbon_factor = 0.494
+    carbon_factor = 0.474
     total_carbon_reduction = round(total_eac * carbon_factor, 2)
 
     return {

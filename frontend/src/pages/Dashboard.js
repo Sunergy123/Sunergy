@@ -514,9 +514,7 @@ export default function Dashboard({
                           </p>
                         </div>
 
-                        <span className="material-symbols-outlined text-white/20 cursor-pointer hover:text-white transition-colors">
-                          more_vert
-                        </span>
+                        
                       </div>
                     ))
                   )}

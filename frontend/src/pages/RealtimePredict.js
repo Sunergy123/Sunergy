@@ -756,18 +756,20 @@ export default function RealtimePredict({
 
                     <div className="grid grid-cols-2 gap-3 pt-3 border-t border-white/5">
                       <div>
-                        <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest mb-1 flex items-center">WMAPE
+                        <div className="text-[10px] text-white/30 font-bold uppercase tracking-widest mb-1 flex items-center">
+                          WMAPE
                           <InfoTooltip text={"WMAPE（加權平均絕對百分比誤差）\n\n公式：Σ|預測値 − 實際値| ÷ Σ|實際値| × 100%\n\n以實際發電量加權，避免低發電時段拉高平均誤差。"} />
-                        </p>
+                        </div>
                         <div className="flex items-baseline gap-1">
                           <span className="text-xl font-black font-mono text-white">{m.avg_error_pct != null ? m.avg_error_pct.toFixed(2) : '—'}</span>
                           <span className={`text-sm font-bold ${c.text}`}>%</span>
                         </div>
                       </div>
                       <div>
-                        <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest mb-1 flex items-center">MAE
+                        <div className="text-[10px] text-white/30 font-bold uppercase tracking-widest mb-1 flex items-center">
+                          MAE
                           <InfoTooltip text={"MAE（平均絕對誤差）\n\n公式：Σ|預測値 − 實際値| ÷ 筆數\n單位 kW，反映平均絕對差距。"} />
-                        </p>
+                        </div>
                         <div className="flex items-baseline gap-1">
                           <span className="text-xl font-black font-mono text-white">{m.avg_error_abs != null ? m.avg_error_abs.toFixed(2) : '—'}</span>
                           <span className={`text-sm font-bold ${c.text}`}>kW</span>

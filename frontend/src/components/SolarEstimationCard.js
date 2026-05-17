@@ -2,27 +2,29 @@ import { useState } from 'react';
 import SolarMap from './SolarMap';
 function InfoTooltip({ text }) {
   return (
-    <div className="relative inline-block group ml-1">
+    <span className="relative inline-block group ml-1">
 
       {/* 問號 icon */}
-      <div className="w-4 h-4 rounded-full border border-white/30 text-white/40 text-[10px] flex items-center justify-center cursor-pointer hover:border-yellow-400 hover:text-yellow-400 transition-all">
+      <span className="w-4 h-4 rounded-full border border-white/30 text-white/40 text-[10px] inline-flex items-center justify-center cursor-pointer hover:border-yellow-400 hover:text-yellow-400 transition-all">
         ?
-      </div>
+      </span>
 
       {/* Tooltip */}
-      <div className="
-        absolute left-6 top-1/2 -translate-y-1/2
-        hidden group-hover:block
-        w-64 p-3 rounded-xl
-        bg-black border border-white/10
-        text-xs text-white/70
-        shadow-2xl z-50
-        whitespace-normal
-      ">
+      <span
+        className="
+          absolute left-6 top-1/2 -translate-y-1/2
+          hidden group-hover:block
+          w-64 p-3 rounded-xl
+          bg-black border border-white/10
+          text-xs text-white/70
+          shadow-2xl z-50
+          whitespace-normal
+        "
+      >
         {text}
-      </div>
+      </span>
 
-    </div>
+    </span>
   );
 }
 

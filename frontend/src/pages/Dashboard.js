@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
+import SolarEstimationCard from '../components/SolarEstimationCard';
 
 const CarbonReductionSection = ({ totalGeneration, onOpenModal }) => {
   // 2024年台灣電力排碳係數假設為 0.474 kgCO₂e/kWh (請依實際需求調整)
@@ -520,17 +521,6 @@ export default function Dashboard({
                   )}
                 </div>
               </section>
-            </div>
-
-            {/* --- Dashboard.js 右側欄位 (lg:col-span-5) --- */}
-            <div className="lg:col-span-5 flex flex-col gap-8">
-              
-              {/* 使用新封裝的減碳效益區塊，取代舊的兩個卡片 */}
-              <CarbonReductionSection 
-                totalGeneration={stats.total_kwh}
-                onOpenModal={() => setIsModalOpen(true)}
-              />
-
               <section>
                 <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                   <span className="material-symbols-outlined text-primary">leaderboard</span>
@@ -618,6 +608,19 @@ export default function Dashboard({
                   )}
                 </div>
               </section>
+            </div>
+
+            {/* --- Dashboard.js 右側欄位 (lg:col-span-5) --- */}
+            <div className="lg:col-span-5 flex flex-col gap-8">
+              
+              {/* 使用新封裝的減碳效益區塊，取代舊的兩個卡片 */}
+              <CarbonReductionSection 
+                totalGeneration={stats.total_kwh}
+                onOpenModal={() => setIsModalOpen(true)}
+              />
+
+              <SolarEstimationCard />
+
             </div>
           </div>
         </main>

@@ -13,6 +13,7 @@ from routers.train import router as train_router
 from routers.predict import router as predict_router
 from routers.realtime import router as realtime_router
 from routers.physics import router as physics_router
+from routers import solar
 
 Base.metadata.create_all(bind=engine)
 
@@ -48,6 +49,7 @@ app.include_router(train_router)
 app.include_router(predict_router)
 app.include_router(realtime_router)
 app.include_router(physics_router)
+app.include_router(solar.router)
 
 @app.get("/")
 def root():

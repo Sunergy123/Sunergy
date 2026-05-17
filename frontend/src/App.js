@@ -1,5 +1,6 @@
 // src/App.js
 import React, { useState, useEffect } from 'react';
+import 'leaflet/dist/leaflet.css';
 
 // ===== 基礎組件 =====
 import PublicHome from './pages/PublicHome';

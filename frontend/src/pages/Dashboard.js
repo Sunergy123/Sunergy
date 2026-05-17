@@ -129,12 +129,13 @@ const CarbonReductionSection = ({ totalGeneration, onOpenModal }) => {
             )}
           </div>
           
-        {/* 註解 */}
-          <p className="text-[10px] text-white/30 mt-2 ml-1">
-            * 註：因度數與減碳量之計量基準（1 度電 = {carbonFactor} kgCO₂e）與實際市場行情不同，兩者預估總價值存在差異。
-          </p>
         </div>
-
+          {/* 註解 */}
+          <div className="text-[10px] text-white/30 mt-2 ml-1 leading-relaxed">
+            <p>* 註：請留意兩者的計價單位不同，因此相同的單價數值會產生不同的總價值：</p>
+            <p className="ml-6">- 售電計價：元 / 度 (kWh)</p>
+            <p className="ml-6">- 碳權計價：元 / 公斤 (kgCO₂e)</p>
+          </div>
       </div>
     </div>
   );

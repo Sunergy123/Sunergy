@@ -1,7 +1,7 @@
 // src/pages/StartPredict.js
 import React, { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
-const API_BASE_URL = "http://127.0.0.1:8000";
+import { API_BASE_URL } from "../config";
 
 export default function StartPredict({
   onBack,
@@ -97,7 +97,7 @@ export default function StartPredict({
     const uid = getUserId();
     if (!uid) return;
 
-    fetch(`http://127.0.0.1:8000/site/list?user_id=${uid}`)
+    fetch(`${API_BASE_URL}/site/list?user_id=${uid}`)
       .then((res) => res.json())
       .then((data) => {
         setSites(Array.isArray(data) ? data : []);
@@ -135,7 +135,7 @@ export default function StartPredict({
     }
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/site/create", {
+      const res = await fetch(`${API_BASE_URL}/site/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -163,7 +163,7 @@ export default function StartPredict({
       setNewCapacityKwp("");
 
       const res2 = await fetch(
-        `http://127.0.0.1:8000/site/list?user_id=${uid}`
+        `${API_BASE_URL}/site/list?user_id=${uid}`
       );
       const siteList = await res2.json();
 
@@ -214,7 +214,7 @@ export default function StartPredict({
     // ── Step 1: 自動清洗 ──
     try {
       setLazyStep("cleaning");
-      const cleanRes = await fetch("http://127.0.0.1:8000/save-cleaned-data/", {
+      const cleanRes = await fetch(`${API_BASE_URL}/save-cleaned-data/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -240,7 +240,7 @@ export default function StartPredict({
 
       // ── Step 2: 訓練三模型 ──
       setLazyStep("training");
-      const trainRes = await fetch("http://127.0.0.1:8000/train/run", {
+      const trainRes = await fetch(`${API_BASE_URL}/train/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -353,7 +353,7 @@ export default function StartPredict({
       setProcessing(true);
 
       const res = await fetch(
-        `http://127.0.0.1:8000/site/upload-data?site_id=${selectedSite}`,
+        `${API_BASE_URL}/site/upload-data?site_id=${selectedSite}`,
         { method: "POST", body: formData }
       );
 
@@ -985,7 +985,7 @@ export default function StartPredict({
                   // 若有選公用，呼叫後端
                   if (lazyPendingData.modelDbIds && Object.keys(lazyPendingData.modelDbIds).length > 0) {
                     try {
-                      await fetch('http://127.0.0.1:8000/train/set-public', {
+                      await fetch(`${API_BASE_URL}/train/set-public`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({

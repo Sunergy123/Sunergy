@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import { API_BASE_URL } from "../config";
 import Navbar from '../components/Navbar';
 import SolarEstimationCard from '../components/SolarEstimationCard';
 
-const CarbonReductionSection = ({ totalGeneration, onOpenModal }) => {
-  // 2024年台灣電力排碳係數假設為 0.474 kgCO₂e/kWh (請依實際需求調整)
-  const carbonFactor = 0.474; 
-  const totalReduction = (totalGeneration * carbonFactor).toFixed(2);
+const CarbonReductionSection = ({ totalGeneration, carbonFactor: carbonFactorProp, totalReduction: totalReductionProp, onOpenModal }) => {
+  // 預設 fallback:2024 年台灣電力排碳係數 (kgCO₂e/kWh)。優先採用 backend (/train/dashboard-stats) 回傳值
+  const carbonFactor = carbonFactorProp ?? 0.474;
+  const totalReduction = totalReductionProp != null
+    ? Number(totalReductionProp).toFixed(2)
+    : (totalGeneration * carbonFactor).toFixed(2);
 
   // 新增：控制顯示模式與單價的 State
   const [displayMode, setDisplayMode] = useState('carbon'); // 'carbon' (碳排) 或 'power' (發電量)
@@ -231,7 +234,7 @@ export default function Dashboard({
       const user = JSON.parse(localStorage.getItem("user"));
       if (!user?.user_id) return;
 
-      const res = await fetch(`http://127.0.0.1:8000/train/sites?user_id=${user.user_id}`);
+      const res = await fetch(`${API_BASE_URL}/train/sites?user_id=${user.user_id}`);
       const data = await res.json();
 
       console.log("API回傳:", data);
@@ -282,7 +285,7 @@ export default function Dashboard({
       params.append("upload_ids", id);
     });
 
-    const url = `http://127.0.0.1:8000/train/dashboard-stats?${params.toString()}`;
+    const url = `${API_BASE_URL}/train/dashboard-stats?${params.toString()}`;
 
     const res = await fetch(url);
     const data = await res.json();
@@ -316,7 +319,7 @@ export default function Dashboard({
         const userId = user.user_id;
 
         const res = await fetch(
-          `http://127.0.0.1:8000/train/trained-models?user_id=${userId}`
+          `${API_BASE_URL}/train/trained-models?user_id=${userId}`
         );
 
         if (!res.ok) {
@@ -387,7 +390,7 @@ export default function Dashboard({
       if (!user?.user_id) return;
 
       // 呼叫你在 train.py 新增的端點
-      const res = await fetch(`http://127.0.0.1:8000/train/dashboard-stats?user_id=${user.user_id}`);
+      const res = await fetch(`${API_BASE_URL}/train/dashboard-stats?user_id=${user.user_id}`);
       if (!res.ok) throw new Error("統計資料抓取失敗");
       
       const data = await res.json();
@@ -620,8 +623,10 @@ export default function Dashboard({
             <div className="lg:col-span-5 flex flex-col gap-8">
               
               {/* 使用新封裝的減碳效益區塊，取代舊的兩個卡片 */}
-              <CarbonReductionSection 
+              <CarbonReductionSection
                 totalGeneration={stats.total_kwh}
+                carbonFactor={stats.carbon_factor}
+                totalReduction={stats.total_carbon_reduction}
                 onOpenModal={() => setIsModalOpen(true)}
               />
 
@@ -660,7 +665,7 @@ export default function Dashboard({
 
                       try {
                         const requests = newSelected.map(id =>
-                          fetch(`http://127.0.0.1:8000/train/site-datasets?site_id=${id}`)
+                          fetch(`${API_BASE_URL}/train/site-datasets?site_id=${id}`)
                             .then(res => res.json())
                             .then(data => ({
                               site_id: id,

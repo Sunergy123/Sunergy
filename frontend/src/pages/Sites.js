@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
-
-const API_BASE_URL = "http://localhost:8000";
+import { API_BASE_URL } from "../config";
 
 export default function Sites({
   onNavigateToDashboard,

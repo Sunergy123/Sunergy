@@ -1,5 +1,6 @@
 // src/pages/DataCleaning.js
 import React, { useEffect, useState } from "react";
+import { API_BASE_URL } from "../config";
 import Navbar from "../components/Navbar";
 import {
   Chart as ChartJS,
@@ -571,7 +572,7 @@ export default function DataCleaning({
         });
 
         const res = await fetch(
-          `http://127.0.0.1:8000/visualize-data/?${params.toString()}`
+          `${API_BASE_URL}/visualize-data/?${params.toString()}`
         );
 
         if (!res.ok) {
@@ -639,7 +640,7 @@ export default function DataCleaning({
         }),
       };
 
-      const res = await fetch("http://127.0.0.1:8000/save-cleaned-data/", {
+      const res = await fetch(`${API_BASE_URL}/save-cleaned-data/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

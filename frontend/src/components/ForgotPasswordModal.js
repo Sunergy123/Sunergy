@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { API_BASE_URL } from "../config";
 
 export default function ForgotPasswordModal({ onClose }) {
   const [step, setStep] = useState(1);
@@ -14,7 +15,7 @@ export default function ForgotPasswordModal({ onClose }) {
     setLoading(true);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/auth/forgot-password/send-code", {
+      const res = await fetch(`${API_BASE_URL}/auth/forgot-password/send-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_account: email }),
@@ -40,7 +41,7 @@ export default function ForgotPasswordModal({ onClose }) {
     setLoading(true);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/auth/forgot-password/verify-code", {
+      const res = await fetch(`${API_BASE_URL}/auth/forgot-password/verify-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_account: email, code: code }),
@@ -65,7 +66,7 @@ export default function ForgotPasswordModal({ onClose }) {
     setLoading(true);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/auth/forgot-password/reset", {
+      const res = await fetch(`${API_BASE_URL}/auth/forgot-password/reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_account: email, new_password: newPassword }),

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from "../config";
 
 export default function ChangePasswordModal({ onClose }) {
   const [formData, setFormData] = useState({
@@ -31,7 +32,7 @@ export default function ChangePasswordModal({ onClose }) {
 
     setLoading(true);
     try {
-      const response = await fetch("http://127.0.0.1:8000/auth/change-password", {
+      const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -1,5 +1,6 @@
 // src/pages/ModelTraining.js
 import React, { useEffect, useState } from 'react';
+import { API_BASE_URL } from "../config";
 import Navbar from '../components/Navbar';
 
 /* ── 公式說明 Tooltip ── */
@@ -129,7 +130,7 @@ export default function ModelTraining({
 
     if (!dataId) return;
 
-    fetch(`http://127.0.0.1:8000/train/info?data_id=${dataId}`)
+    fetch(`${API_BASE_URL}/train/info?data_id=${dataId}`)
       .then(res => res.json())
       .then(data => {
         console.log("train info:", data); // 建議加這行 debug
@@ -219,7 +220,7 @@ export default function ModelTraining({
     setTrainingStatus(`正在執行 ${strategy === 'bayes' ? 'Bayesian 優化' : strategy === 'grid' ? '網格搜索' : '手動參數'} 訓練...`);
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/train/run', {
+      const res = await fetch(`${API_BASE_URL}/train/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -361,7 +362,7 @@ export default function ModelTraining({
                     return;
                   }
 
-                  window.open(`http://127.0.0.1:8000/train/download?data_id=${dataId}`);
+                  window.open(`${API_BASE_URL}/train/download?data_id=${dataId}`);
                 }}
                 className="px-3 py-1 text-xs bg-primary text-black rounded hover:opacity-80"
               >
@@ -720,7 +721,7 @@ export default function ModelTraining({
                   // 無論是否有公用模型，都呼叫後端（model_db_ids 告知對應關係）
                   if (pendingResults?.modelDbIds && Object.keys(pendingResults.modelDbIds).length > 0) {
                     try {
-                      const res = await fetch('http://127.0.0.1:8000/train/set-public', {
+                      const res = await fetch(`${API_BASE_URL}/train/set-public`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({

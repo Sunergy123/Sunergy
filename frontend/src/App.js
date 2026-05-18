@@ -1,5 +1,6 @@
 // src/App.js
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from "./config";
 import 'leaflet/dist/leaflet.css';
 
 // ===== 基礎組件 =====
@@ -110,7 +111,7 @@ function App() {
   // ==============================
   const submitCreateSite = async (formData) => {
     if (!currentUser) return { success: false, message: "請先登入" };
-    const res = await fetch("http://127.0.0.1:8000/site/create", {
+    const res = await fetch(`${API_BASE_URL}/site/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...formData, user_id: currentUser.user_id }),

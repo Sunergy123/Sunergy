@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { API_BASE_URL } from "../config";
 import ForgotPasswordModal from "./ForgotPasswordModal";
 
 export default function LoginModal({
@@ -16,7 +17,7 @@ export default function LoginModal({
     setMsg("");
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/auth/login", {
+      const res = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -1,7 +1,6 @@
 // components/EditSiteModal.js
 import React, { useState } from "react";
-
-const API_BASE_URL = "http://127.0.0.1:8000";
+import { API_BASE_URL } from "../config";
 
 export default function EditSiteModal({ site, onClose, onUpdated }) {
   const [form, setForm] = useState({

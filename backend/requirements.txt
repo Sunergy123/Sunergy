@@ -14,3 +14,4 @@ xgboost
 optuna
 joblib
 matplotlib
+requests

@@ -1,5 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import SolarMap from './SolarMap';
+import { API_BASE } from '../config';
+
+const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org';
+
 function InfoTooltip({ text }) {
   return (
     <span className="relative inline-block group ml-1">
@@ -33,7 +37,7 @@ export default function SolarEstimationCard() {
   const [lat, setLat] = useState('');
   const [lon, setLon] = useState('');
   const [capacity, setCapacity] = useState('');
-  const [pr, setPr] = useState(0.8);
+  const [pr, setPr] = useState('0.8');
   const [electricityPrice, setElectricityPrice] = useState('');
   const [result, setResult] = useState(null);
   const [location, setLocation] = useState('');
@@ -41,18 +45,58 @@ export default function SolarEstimationCard() {
 
   // Loading
   const [loading, setLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  // 搜尋觸發飛行的 trigger;避免點地圖也被自動 flyTo
+  const [flyToTrigger, setFlyToTrigger] = useState(0);
+
+  // 防止 race condition:只採用最後一次發出的 request 結果
+  const estimateReqIdRef = useRef(0);
 
   const handleEstimate = async () => {
 
+    // Input validation
+    const latNum = parseFloat(lat);
+    const lonNum = parseFloat(lon);
+    const capacityNum = parseFloat(capacity);
+    const prNum = parseFloat(pr);
+    const priceNum = parseFloat(electricityPrice);
+
+    if (Number.isNaN(latNum) || Number.isNaN(lonNum)) {
+      alert('請先選擇地點(點地圖或搜尋)');
+      return;
+    }
+    if (!(capacityNum > 0)) {
+      alert('裝置容量必須大於 0');
+      return;
+    }
+    if (!(prNum > 0 && prNum <= 1)) {
+      alert('系統效率 PR 必須介於 0 ~ 1 之間');
+      return;
+    }
+    if (!(priceNum >= 0)) {
+      alert('請輸入有效的每度電價格');
+      return;
+    }
+
+    const reqId = ++estimateReqIdRef.current;
     setLoading(true);
 
     try {
 
       const res = await fetch(
-        `http://127.0.0.1:8000/solar/estimate?lat=${lat}&lon=${lon}&capacity=${capacity}&pr=${pr}`
+        `${API_BASE}/solar/estimate?lat=${latNum}&lon=${lonNum}&capacity=${capacityNum}&pr=${prNum}`
       );
 
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errText}`);
+      }
+
       const data = await res.json();
+
+      // 較舊的 request 回來時忽略
+      if (reqId !== estimateReqIdRef.current) return;
 
       // 適合程度判斷
       let level = '';
@@ -71,30 +115,29 @@ export default function SolarEstimationCard() {
         levelColor = 'text-red-400';
       }
 
-      // 加進資料
       data.level = level;
       data.levelColor = levelColor;
 
-      // 預估收益
-      data.income = (
-        data.year_energy * electricityPrice
-      ).toFixed(0);
+      // 預估收益(前端計算,以使用者輸入的電價為準)
+      data.income = (data.year_energy * priceNum).toFixed(0);
 
-      // 減碳量（1度電約 0.474 kgCO₂e）
-      data.carbon = (
-        data.year_energy * 0.474
-      ).toFixed(0);
+      // 減碳量由 backend 提供 (annual_carbon_reduction),保留欄位以兼容
+      data.carbon = (data.annual_carbon_reduction ?? 0).toFixed(0);
 
       setResult(data);
 
     } catch (error) {
 
-      console.error(error);
-      alert('評估失敗');
+      if (reqId === estimateReqIdRef.current) {
+        console.error(error);
+        alert('評估失敗:' + (error.message || '未知錯誤'));
+      }
 
     } finally {
 
-      setLoading(false);
+      if (reqId === estimateReqIdRef.current) {
+        setLoading(false);
+      }
 
     }
   };
@@ -104,8 +147,11 @@ export default function SolarEstimationCard() {
     try {
 
         const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
+        `${NOMINATIM_BASE}/reverse?lat=${lat}&lon=${lon}&format=json`,
+        { headers: { 'Accept-Language': 'zh-TW' } }
         );
+
+        if (!res.ok) return;
 
         const data = await res.json();
 
@@ -122,11 +168,21 @@ export default function SolarEstimationCard() {
 
   const searchLocation = async () => {
 
+    if (!location.trim()) {
+      alert('請輸入地點');
+      return;
+    }
+
+    setSearchLoading(true);
+
     try {
 
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${location}&format=json`
+        `${NOMINATIM_BASE}/search?q=${encodeURIComponent(location)}&format=json&limit=1`,
+        { headers: { 'Accept-Language': 'zh-TW' } }
       );
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
 
@@ -134,8 +190,10 @@ export default function SolarEstimationCard() {
 
         setLat(data[0].lat);
         setLon(data[0].lon);
-
         setAddress(data[0].display_name);
+
+        // 觸發地圖飛行 (僅搜尋時)
+        setFlyToTrigger((t) => t + 1);
 
       } else {
 
@@ -147,6 +205,10 @@ export default function SolarEstimationCard() {
 
       console.error(error);
       alert('搜尋失敗');
+
+    } finally {
+
+      setSearchLoading(false);
 
     }
   };
@@ -165,8 +227,8 @@ export default function SolarEstimationCard() {
         lon={lon}
         setLat={setLat}
         setLon={setLon}
-        setAddress={setAddress}
         reverseGeocode={reverseGeocode}
+        flyToTrigger={flyToTrigger}
       />
 
       <div className="mt-4 space-y-3">
@@ -179,39 +241,42 @@ export default function SolarEstimationCard() {
             placeholder="輸入地點"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !searchLoading) searchLocation(); }}
             className="w-full bg-black/30 border border-white/10 rounded-lg p-3"
           />
 
           <button
             onClick={searchLocation}
-            className="w-full bg-yellow-500 text-black font-bold py-2 rounded-lg"
+            disabled={searchLoading}
+            className="w-full bg-yellow-500 text-black font-bold py-2 rounded-lg disabled:opacity-50"
           >
-            搜尋地點
+            {searchLoading ? '搜尋中...' : '搜尋地點'}
           </button>
 
         </div>
 
         {/* 地點資訊 */}
         <div className="text-sm text-white/60">
-          地點：{address || '-'}
+          地點:{address || '-'}
         </div>
 
         <div className="text-sm text-white/60">
-          緯度：{lat || '-'}
+          緯度:{lat || '-'}
         </div>
 
         <div className="text-sm text-white/60">
-          經度：{lon || '-'}
+          經度:{lon || '-'}
         </div>
 
         {/* 容量輸入 */}
         <div>
             <p className="text-sm text-white/70 mb-2">
-                裝置容量（kWp）
+                裝置容量(kWp)
             </p>
 
             <input
                 type="number"
+                min="0"
                 value={capacity}
                 onChange={(e) => setCapacity(e.target.value)}
                 className="w-full bg-black/30 border border-white/10 rounded-lg p-3"
@@ -225,13 +290,15 @@ export default function SolarEstimationCard() {
                 系統效率 PR
 
                 <InfoTooltip
-                    text="PR（Performance Ratio）為太陽能系統效能比，用來表示實際發電效率。已包含逆變器損耗、溫度損失、線路損耗等因素。一般系統約為 0.75 ~ 0.85。"
+                    text="PR(Performance Ratio)為太陽能系統效能比,用來表示實際發電效率。已包含逆變器損耗、溫度損失、線路損耗等因素。一般系統約為 0.75 ~ 0.85。"
                 />
             </p>
 
             <input
                 type="number"
                 step="0.01"
+                min="0"
+                max="1"
                 value={pr}
                 onChange={(e) => setPr(e.target.value)}
                 className="w-full bg-black/30 border border-white/10 rounded-lg p-3"
@@ -242,12 +309,13 @@ export default function SolarEstimationCard() {
         {/* 售電價格 */}
         <div>
             <p className="text-sm text-white/70 mb-2">
-                每度電價格（元/度）
+                每度電價格(元/度)
             </p>
 
             <input
                 type="number"
                 step="0.1"
+                min="0"
                 value={electricityPrice}
                 onChange={(e) => setElectricityPrice(e.target.value)}
                 className="w-full bg-black/30 border border-white/10 rounded-lg p-3"
@@ -258,7 +326,7 @@ export default function SolarEstimationCard() {
         <button
           onClick={handleEstimate}
           disabled={loading}
-          className="w-full bg-yellow-500 text-black font-bold py-3 rounded-xl"
+          className="w-full bg-yellow-500 text-black font-bold py-3 rounded-xl disabled:opacity-50"
         >
           {loading ? '評估中...' : '開始評估'}
         </button>
@@ -271,13 +339,13 @@ export default function SolarEstimationCard() {
             {/* 平均日照 */}
             <div>
                 <p className="flex items-center">
-                    ☀️ 平均日照：
+                    ☀️ 平均日照:
                     <span className="font-bold ml-1">
                         {result.H} kWh/m²/day
                     </span>
 
                     <InfoTooltip
-                        text="每平方公尺每日平均接收的太陽能量，可視為峰值日照時數（PSH）。數值越高代表越適合建置太陽能。"
+                        text="每平方公尺每日平均接收的太陽能量,可視為峰值日照時數(PSH)。數值越高代表越適合建置太陽能。"
                     />
                 </p>
             </div>
@@ -285,13 +353,13 @@ export default function SolarEstimationCard() {
             {/* 適合程度 */}
             <div>
                 <p className={`${result.levelColor} flex items-center`}>
-                    📊 適合程度：
+                    📊 適合程度:
                     <span className="font-bold ml-1">
                         {result.level}
                     </span>
 
                     <InfoTooltip
-                        text="依據平均日照量判斷案場建置適合程度。通常日照量越高，發電效益越好。"
+                        text="依據平均日照量判斷案場建置適合程度。通常日照量越高,發電效益越好。"
                     />
                 </p>
             </div>
@@ -299,13 +367,13 @@ export default function SolarEstimationCard() {
             {/* 日發電 */}
             <div>
                 <p className="flex items-center">
-                    ⚡ 預估日發電：
+                    ⚡ 預估日發電:
                     <span className="font-bold ml-1">
                         {result.daily_energy} kWh/day
                     </span>
 
                     <InfoTooltip
-                        text="依據日照量、裝置容量（kWp）與系統效率（PR）估算之每日平均發電量。"
+                        text="依據日照量、裝置容量(kWp)與系統效率(PR)估算之每日平均發電量。"
                     />
                 </p>
             </div>
@@ -313,13 +381,13 @@ export default function SolarEstimationCard() {
             {/* 年發電 */}
             <div>
                 <p className="flex items-center">
-                    📅 預估年發電：
+                    📅 預估年發電:
                     <span className="font-bold ml-1">
                         {result.year_energy} kWh/year
                     </span>
 
                     <InfoTooltip
-                        text="預估一年總發電量，通常以每日平均發電量乘以 365 天估算。"
+                        text="預估一年總發電量,通常以每日平均發電量乘以 365 天估算。"
                     />
                 </p>
             </div>
@@ -327,13 +395,13 @@ export default function SolarEstimationCard() {
             {/* 年收益 */}
             <div>
                 <p className="flex items-center">
-                    💰 預估年收益：
+                    💰 預估年收益:
                     <span className="font-bold ml-1">
                         NT$ {Number(result.income).toLocaleString()}
                     </span>
 
                     <InfoTooltip
-                        text="依照輸入之每度電價格（躉購費率）估算年度售電收益。"
+                        text="依照輸入之每度電價格(躉購費率)估算年度售電收益。"
                     />
                 </p>
             </div>
@@ -341,13 +409,13 @@ export default function SolarEstimationCard() {
             {/* 減碳 */}
             <div>
                 <p className="flex items-center">
-                    🌱 年減碳量：
+                    🌱 年減碳量:
                     <span className="font-bold ml-1">
                         {Number(result.carbon).toLocaleString()} kgCO₂e/year
                     </span>
 
                     <InfoTooltip
-                        text="依台灣平均電力排碳係數估算，可反映使用太陽能所減少的碳排放量。"
+                        text={`依台灣平均電力排碳係數 (${result.carbon_factor ?? 0.474} kgCO₂e/kWh) 估算,可反映使用太陽能所減少的碳排放量。`}
                     />
                 </p>
             </div>

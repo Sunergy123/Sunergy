@@ -60,22 +60,28 @@ function LocationMarker({
 }
 
 
-// 自動飛到位置
-function FlyToLocation({ position }) {
+// 飛到指定位置 — 只在 trigger 變化時觸發 (例如搜尋結果),避免點地圖也被強制縮放
+function FlyToLocation({ lat, lon, trigger }) {
 
   const map = useMap();
 
   useEffect(() => {
 
-    if (position) {
+    const latNum = parseFloat(lat);
+    const lonNum = parseFloat(lon);
 
-      map.flyTo(position, 12, {
+    if (trigger > 0 && !Number.isNaN(latNum) && !Number.isNaN(lonNum)) {
+
+      map.flyTo([latNum, lonNum], 12, {
         duration: 2
       });
 
     }
 
-  }, [position, map]);
+    // 故意只依賴 trigger:點地圖造成的 lat/lon 變化不觸發飛行,
+    // 只有父組件呼叫 setFlyToTrigger(t+1) 時才飛
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trigger]);
 
   return null;
 }
@@ -86,8 +92,8 @@ export default function SolarMap({
   lon,
   setLat,
   setLon,
-  setAddress,
-  reverseGeocode
+  reverseGeocode,
+  flyToTrigger = 0
 }) {
 
   const [position, setPosition] = useState(null);
@@ -134,7 +140,7 @@ export default function SolarMap({
       />
 
       {/* 飛到搜尋位置 */}
-      <FlyToLocation position={position} />
+      <FlyToLocation lat={lat} lon={lon} trigger={flyToTrigger} />
 
     </MapContainer>
   );

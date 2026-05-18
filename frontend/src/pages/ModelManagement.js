@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { API_BASE_URL } from "../config";
 import Navbar from '../components/Navbar';
 
 export default function ModelManagement({
@@ -52,7 +53,7 @@ export default function ModelManagement({
       }
 
       const res = await fetch(
-        `http://127.0.0.1:8000/train/trained-models?user_id=${userId}`
+        `${API_BASE_URL}/train/trained-models?user_id=${userId}`
       );
 
       if (!res.ok) {
@@ -126,7 +127,7 @@ export default function ModelManagement({
       const userId = user.user_id;
 
       const res = await fetch(
-        `http://127.0.0.1:8000/train/trained-models/${id}?user_id=${userId}`,
+        `${API_BASE_URL}/train/trained-models/${id}?user_id=${userId}`,
         { method: 'DELETE' }
       );
 
@@ -153,7 +154,7 @@ export default function ModelManagement({
       const userId = user.user_id;
 
       const res = await fetch(
-        `http://127.0.0.1:8000/train/trained-models/batch-delete`,
+        `${API_BASE_URL}/train/trained-models/batch-delete`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

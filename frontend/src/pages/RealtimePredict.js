@@ -5,8 +5,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import Navbar from '../components/Navbar';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-
-const API_BASE = 'http://127.0.0.1:8000';
+import { API_BASE } from '../config';
 
 /* ── 公式說明 Tooltip ── */
 function InfoTooltip({ text }) {

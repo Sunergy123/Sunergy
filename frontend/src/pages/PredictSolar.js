@@ -1,5 +1,6 @@
 // src/pages/PredictSolar.js
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { API_BASE_URL } from "../config";
 import Navbar from '../components/Navbar';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -171,7 +172,7 @@ export default function PredictSolar({
       return;
     }
     const userId = user.user_id;
-    fetch(`http://127.0.0.1:8000/train/trained-models?user_id=${userId}`)
+    fetch(`${API_BASE_URL}/train/trained-models?user_id=${userId}`)
       .then(async (r) => {
         const data = await r.json().catch(() => []);
         if (!r.ok) throw new Error(data?.detail || '取得模型失敗');
@@ -218,7 +219,7 @@ export default function PredictSolar({
           formData.append('physics_kwp', String(Number(physicsKwp)));
           formData.append('physics_pr', String(Number(physicsPr) || 0.80));
         }
-        const res = await fetch('http://127.0.0.1:8000/train/predict-file-multi', {
+        const res = await fetch(`${API_BASE_URL}/train/predict-file-multi`, {
           method: 'POST',
           body: formData,
         });
@@ -227,7 +228,7 @@ export default function PredictSolar({
         nextResult = { mode: 'multi', ...json };
       } else {
         formData.append('model_id', selectedModelIds[0]);
-        const res = await fetch('http://127.0.0.1:8000/train/predict-file', {
+        const res = await fetch(`${API_BASE_URL}/train/predict-file`, {
           method: 'POST',
           body: formData,
         });

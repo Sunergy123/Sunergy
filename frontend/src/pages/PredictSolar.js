@@ -4,6 +4,7 @@ import { API_BASE_URL } from "../config";
 import Navbar from '../components/Navbar';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import PredictionChart from '../components/PredictionChart';
 
 
 /* ── 公式說明 Tooltip ── */
@@ -164,6 +165,11 @@ export default function PredictSolar({
   const [filters, setFilters] = useState({});
   const [showFilters, setShowFilters] = useState(false);
 
+  // view mode: 'table' | 'chart'
+  const [viewMode, setViewMode] = useState('table');
+  // 圖表模式下：選取要顯示的日期（empty = 全部）
+  const [selectedDates, setSelectedDates] = useState([]);
+
   // Fetch trained models on mount
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user"));
@@ -298,6 +304,52 @@ export default function PredictSolar({
     modelColorMap[m.model_id] = MODEL_COLORS[i % MODEL_COLORS.length];
   });
 
+  // ── 日期 / 時間 label 抽取（供圖表 & 日期篩選器使用） ──
+  const extractDateStr = useCallback((row) => {
+    if (!row) return null;
+    if (row._ea_datetime && typeof row._ea_datetime === 'string') {
+      return row._ea_datetime.slice(0, 10);
+    }
+    const d = row.theDate ?? row.TheDate ?? row.the_date ?? row.date ?? row.Date;
+    if (d) {
+      const s = String(d);
+      return s.includes('T') ? s.split('T')[0] : s.slice(0, 10);
+    }
+    return null;
+  }, []);
+
+  const extractTimeLabel = useCallback((row) => {
+    if (!row) return null;
+    if (row._ea_datetime && typeof row._ea_datetime === 'string') return row._ea_datetime;
+    const date = extractDateStr(row);
+    const h = row.theHour ?? row.TheHour ?? row.the_hour ?? row.Hour ?? row.hour;
+    if (date && h != null && h !== '') {
+      const hh = String(Math.round(Number(h))).padStart(2, '0');
+      return `${date} ${hh}:00`;
+    }
+    return date || null;
+  }, [extractDateStr]);
+
+  // ── 所有可選的唯一日期（依出現順序） ──
+  const availableDates = useMemo(() => {
+    if (!result?.rows) return [];
+    const seen = new Set();
+    const ordered = [];
+    result.rows.forEach((r) => {
+      const d = extractDateStr(r);
+      if (d && !seen.has(d)) {
+        seen.add(d);
+        ordered.push(d);
+      }
+    });
+    return ordered.sort();
+  }, [result, extractDateStr]);
+
+  // result 改變 → 重設「已選日期 = 全部」
+  useEffect(() => {
+    setSelectedDates(availableDates);
+  }, [availableDates]);
+
   // ── Filtering logic ──
   const filteredRows = useMemo(() => {
     if (!result?.rows) return [];
@@ -359,6 +411,23 @@ export default function PredictSolar({
   // ── Pagination on sorted+filtered data ──
   const totalPages = Math.ceil(sortedRows.length / PAGE_SIZE);
   const pagedRows = sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  // ── 圖表用：先套用「日期篩選」再按時間排序 ──
+  const chartRows = useMemo(() => {
+    if (!result?.rows) return [];
+    const dateSet = new Set(selectedDates);
+    const base = availableDates.length === 0 || selectedDates.length === availableDates.length
+      ? result.rows
+      : result.rows.filter((r) => {
+          const d = extractDateStr(r);
+          return d && dateSet.has(d);
+        });
+    return [...base].sort((a, b) => {
+      const la = extractTimeLabel(a) || '';
+      const lb = extractTimeLabel(b) || '';
+      return la.localeCompare(lb);
+    });
+  }, [result, selectedDates, availableDates, extractDateStr, extractTimeLabel]);
 
   // ── Sort handler ──
   const handleSort = (colKey) => {
@@ -910,6 +979,33 @@ export default function PredictSolar({
                       </div>
                     )}
 
+                    {/* View mode toggle: 表格 / 圖表 */}
+                    <div className="flex items-center border border-white/10 rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => setViewMode('table')}
+                        className={`flex items-center gap-1 px-3 py-2 text-sm font-bold transition-all ${viewMode === 'table'
+                          ? 'bg-primary/15 text-primary'
+                          : 'text-white/40 hover:bg-white/5 hover:text-white/60'
+                        }`}
+                        title="表格模式"
+                      >
+                        <span className="material-symbols-outlined !text-base">table_rows</span>
+                        表格
+                      </button>
+                      <div className="w-px h-5 bg-white/10" />
+                      <button
+                        onClick={() => setViewMode('chart')}
+                        className={`flex items-center gap-1 px-3 py-2 text-sm font-bold transition-all ${viewMode === 'chart'
+                          ? 'bg-primary/15 text-primary'
+                          : 'text-white/40 hover:bg-white/5 hover:text-white/60'
+                        }`}
+                        title="圖表模式"
+                      >
+                        <span className="material-symbols-outlined !text-base">show_chart</span>
+                        圖表
+                      </button>
+                    </div>
+
                     {/* Error mode toggle */}
                     <div className="flex items-center gap-1">
                       <div className="flex items-center border border-white/10 rounded-lg overflow-hidden">
@@ -978,7 +1074,84 @@ export default function PredictSolar({
                   </div>
                 </div>
 
-                {/* Table */}
+                {/* === Chart mode === */}
+                {viewMode === 'chart' && (
+                  <div className="space-y-4">
+                    {/* 日期篩選器 */}
+                    {availableDates.length > 0 && (
+                      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined !text-base text-primary">event</span>
+                            <span className="text-sm font-bold text-white/70">選擇日期</span>
+                            <span className="text-xs text-white/30">
+                              （已選 {selectedDates.length} / 共 {availableDates.length} 天）
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setSelectedDates(availableDates)}
+                              className="text-xs font-bold text-primary/80 hover:text-primary px-2 py-1 rounded border border-primary/20 hover:bg-primary/10 transition-all"
+                            >
+                              全選
+                            </button>
+                            <button
+                              onClick={() => setSelectedDates([])}
+                              className="text-xs font-bold text-white/40 hover:text-white/70 px-2 py-1 rounded border border-white/10 hover:bg-white/5 transition-all"
+                            >
+                              全部取消
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
+                          {availableDates.map((d) => {
+                            const active = selectedDates.includes(d);
+                            return (
+                              <button
+                                key={d}
+                                onClick={() => {
+                                  setSelectedDates((prev) =>
+                                    prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
+                                  );
+                                }}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border transition-all ${active
+                                  ? 'border-primary bg-primary/15 text-primary'
+                                  : 'border-white/10 bg-white/5 text-white/40 hover:text-white/70'
+                                }`}
+                              >
+                                {d}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 折線圖 */}
+                    <div className="rounded-xl border border-white/5 bg-black/20 p-4">
+                      {selectedDates.length === 0 ? (
+                        <div className="flex items-center justify-center text-white/30 text-sm h-[520px]">
+                          請至少選擇一天
+                        </div>
+                      ) : (
+                        <PredictionChart
+                          rows={chartRows}
+                          columns={result.columns}
+                          okModels={okModels}
+                          modelColorMap={modelColorMap}
+                          getTimeLabel={extractTimeLabel}
+                          height={520}
+                        />
+                      )}
+                      <p className="text-xs text-white/30 mt-3 text-center">
+                        橫軸：時間　|　縱軸：發電量 (kW)　|　圖表共 {chartRows.length} 筆
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* === Table mode === */}
+                {viewMode === 'table' && (
                 <div className="overflow-x-auto rounded-xl border border-white/5">
                   <table className="w-full text-sm text-left whitespace-nowrap">
                     <thead className="bg-white/5 text-white/40 uppercase sticky top-0 z-10">
@@ -1127,9 +1300,10 @@ export default function PredictSolar({
                     </tbody>
                   </table>
                 </div>
+                )}
 
-                {/* Pagination */}
-                {totalPages > 1 && (
+                {/* Pagination (only in table mode) */}
+                {viewMode === 'table' && totalPages > 1 && (
                   <div className="flex items-center justify-between mt-4 text-sm text-white/40">
                     <span>顯示 {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, sortedRows.length)} / {sortedRows.length}{hasActiveFilters ? ` (篩選自 ${result.total_rows} 筆)` : ''}</span>
                     <div className="flex gap-1">

@@ -6,6 +6,7 @@ import Navbar from '../components/Navbar';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { API_BASE } from '../config';
+import PredictionChart from '../components/PredictionChart';
 
 /* ── 公式說明 Tooltip ── */
 function InfoTooltip({ text }) {
@@ -169,6 +170,7 @@ export default function RealtimePredict({
   const [filters, setFilters] = useState({});
   const [showFilters, setShowFilters] = useState(false);
   const [autoScrollLatest, setAutoScrollLatest] = useState(true);
+  const [viewMode, setViewMode] = useState('table'); // 'table' | 'chart'
 
   // ── 取得已訓練模型清單 ──
   useEffect(() => {
@@ -826,6 +828,33 @@ export default function RealtimePredict({
                       </div>
                     )}
 
+                    {/* View mode toggle: 表格 / 圖表 */}
+                    <div className="flex items-center border border-white/10 rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => setViewMode('table')}
+                        className={`flex items-center gap-1 px-3 py-2 text-sm font-bold transition-all ${viewMode === 'table'
+                          ? 'bg-primary/15 text-primary'
+                          : 'text-white/40 hover:bg-white/5 hover:text-white/60'
+                        }`}
+                        title="表格模式"
+                      >
+                        <span className="material-symbols-outlined !text-base">table_rows</span>
+                        表格
+                      </button>
+                      <div className="w-px h-5 bg-white/10" />
+                      <button
+                        onClick={() => setViewMode('chart')}
+                        className={`flex items-center gap-1 px-3 py-2 text-sm font-bold transition-all ${viewMode === 'chart'
+                          ? 'bg-primary/15 text-primary'
+                          : 'text-white/40 hover:bg-white/5 hover:text-white/60'
+                        }`}
+                        title="圖表模式"
+                      >
+                        <span className="material-symbols-outlined !text-base">show_chart</span>
+                        圖表
+                      </button>
+                    </div>
+
                     <div className="flex items-center gap-1">
                       <div className="flex items-center border border-white/10 rounded-lg overflow-hidden">
                         <button onClick={() => setErrorMode('pct')} className={`px-3 py-2 text-sm font-bold transition-all ${errorMode === 'pct' ? 'bg-primary/15 text-primary' : 'text-white/40 hover:bg-white/5 hover:text-white/60'}`}>%</button>
@@ -870,6 +899,25 @@ export default function RealtimePredict({
                   </div>
                 </div>
 
+                {/* === Chart mode (即時) === */}
+                {viewMode === 'chart' && (
+                  <div className="rounded-xl border border-white/5 bg-black/20 p-4">
+                    <PredictionChart
+                      rows={sortedRows}
+                      columns={result.columns}
+                      okModels={okModels}
+                      modelColorMap={modelColorMap}
+                      getTimeLabel={(r) => r.time || ''}
+                      height={520}
+                    />
+                    <p className="text-xs text-white/30 mt-3 text-center">
+                      橫軸：時間　|　縱軸：發電量 (kW)　|　即時緩衝區共 {sortedRows.length} 筆
+                    </p>
+                  </div>
+                )}
+
+                {/* === Table mode === */}
+                {viewMode === 'table' && (
                 <div className="overflow-x-auto rounded-xl border border-white/5">
                   <table className="w-full text-sm text-left whitespace-nowrap">
                     <thead className="bg-white/5 text-white/40 uppercase sticky top-0 z-10">
@@ -986,8 +1034,9 @@ export default function RealtimePredict({
                     </tbody>
                   </table>
                 </div>
+                )}
 
-                {totalPages > 1 && (
+                {viewMode === 'table' && totalPages > 1 && (
                   <div className="flex items-center justify-between mt-4 text-sm text-white/40">
                     <span>顯示 {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, sortedRows.length)} / {sortedRows.length}{hasActiveFilters ? ` (篩選自 ${result.total_rows} 筆)` : ''}</span>
                     <div className="flex gap-1">

@@ -1,6 +1,7 @@
 // src/pages/ErrorAnalysisPage.js
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Navbar from '../components/Navbar';
+import { useThresholds } from '../thresholds';
 
 /* ══════════════════════════════════════════════
    常數 & 工具
@@ -23,21 +24,21 @@ const MODEL_COLORS_CLASS = [
   { text: 'text-orange-400',   border: 'border-orange-400',   bg: 'bg-orange-400/10',   dot: 'bg-orange-400' },
 ];
 
-/** 誤差模式對應的閾值（與 PredictSolar 同步） */
-const ERROR_THRESHOLDS = {
-  pct: { warn: 5,  danger: 15, unit: '%',  axisLabel: '誤差值 %' },
-  abs: { warn: 1,  danger: 5,  unit: 'kW', axisLabel: '誤差值 kW' },
+/** 誤差模式靜態資訊（單位與軸標籤，門檻值從 useThresholds 讀） */
+const ERROR_MODE_META = {
+  pct: { unit: '%',  axisLabel: '誤差值 %' },
+  abs: { unit: 'kW', axisLabel: '誤差值 kW' },
 };
 
 /** 誤差值 → 燈號（以絕對值判斷，正負號僅用於顯示） */
-const getLightLevel = (val, mode = 'pct') => {
+const getLightLevel = (val, mode, thresholdsObj) => {
   if (val === null || val === undefined) return null;
   const n = Number(val);
   if (isNaN(n)) return null;
   const v = Math.abs(n);
-  const { warn, danger } = ERROR_THRESHOLDS[mode];
-  if (v <= warn) return 'green';
-  if (v <= danger) return 'yellow';
+  const t = thresholdsObj[mode];
+  if (v <= t.warn) return 'green';
+  if (v <= t.danger) return 'yellow';
   return 'red';
 };
 
@@ -588,6 +589,7 @@ const LightBar = ({ green, yellow, red, total }) => {
    時段燈號統計表（小時 / 年月）
 ══════════════════════════════════════════════ */
 const LightTable = ({ rows, errCol, groupBy, errorMode }) => {
+  const thresholds = useThresholds();
   const stats = useMemo(() => {
     const map = {};
     rows.forEach(row => {
@@ -603,13 +605,13 @@ const LightTable = ({ rows, errCol, groupBy, errorMode }) => {
         } else return;
       }
       if (!map[key]) map[key] = { green: 0, yellow: 0, red: 0 };
-      const level = getLightLevel(row[errCol], errorMode);
+      const level = getLightLevel(row[errCol], errorMode, thresholds);
       if (level) map[key][level]++;
     });
     return Object.entries(map)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, cnts]) => ({ key, ...cnts, total: cnts.green + cnts.yellow + cnts.red }));
-  }, [rows, errCol, groupBy, errorMode]);
+  }, [rows, errCol, groupBy, errorMode, thresholds]);
 
   if (stats.length === 0) return (
     <div className="text-center text-white/20 text-sm py-8">無可用資料</div>
@@ -665,6 +667,7 @@ export default function ErrorAnalysisPage({
   onNavigateToSites,
   onNavigateToModelMgmt,
   onNavigateToChangePassword,
+  onOpenSettings,
   onLogout,
 }) {
   const navProps = {
@@ -675,6 +678,7 @@ export default function ErrorAnalysisPage({
     onNavigateToSites,
     onNavigateToModelMgmt,
     onNavigateToChangePassword,
+    onOpenSettings,
     onLogout,
   };
 
@@ -708,7 +712,8 @@ export default function ErrorAnalysisPage({
 
   /* ── 誤差模式切換（與 PredictSolar 同步） ── */
   const [errorMode, setErrorMode] = useState('pct'); // 'pct' | 'abs'
-  const thresholds = ERROR_THRESHOLDS[errorMode];
+  const allThresholds = useThresholds();
+  const thresholds = { ...allThresholds[errorMode], ...ERROR_MODE_META[errorMode] };
 
   /* ── 取得所有 err 欄位與 model 資訊 ── */
   const errCols = useMemo(() => getErrCols(result?.columns, errorMode), [result, errorMode]);
@@ -1001,7 +1006,7 @@ export default function ErrorAnalysisPage({
     seriesMeta.forEach(sm => {
       let g = 0, y = 0, r = 0;
       filteredRows.forEach(row => {
-        const level = getLightLevel(row[sm.col], errorMode);
+        const level = getLightLevel(row[sm.col], errorMode, allThresholds);
         if (level === 'green') g++;
         else if (level === 'yellow') y++;
         else if (level === 'red') r++;
@@ -1009,7 +1014,7 @@ export default function ErrorAnalysisPage({
       out[sm.col] = { green: g, yellow: y, red: r, total: g + y + r };
     });
     return out;
-  }, [filteredRows, seriesMeta, errorMode]);
+  }, [filteredRows, seriesMeta, errorMode, allThresholds]);
 
   /* ═══════════════════ RENDER ═══════════════════ */
   return (

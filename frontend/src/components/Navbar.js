@@ -10,6 +10,7 @@ export default function Navbar({
   onNavigateToSites,
   onNavigateToModelMgmt,
   onNavigateToChangePassword,
+  onOpenSettings,
   onLogout
 }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -118,16 +119,30 @@ export default function Navbar({
                 <div className="absolute right-0 top-full z-20 mt-2 w-48 overflow-hidden rounded-xl border border-white/10 bg-[#1E1E1E] shadow-xl backdrop-blur-xl">
                   <div className="flex flex-col p-1">
                     {/* 修改密碼按鈕 */}
-                    <button 
+                    <button
                       onClick={() => {
                         onNavigateToChangePassword();
                         setIsProfileOpen(false);
-                      }} 
+                      }}
                       className="flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-left text-sm text-white/80 hover:bg-white/10 transition-colors"
                     >
-                      <span className="material-symbols-outlined !text-[20px]">settings</span>
+                      <span className="material-symbols-outlined !text-[20px]">lock</span>
                       修改密碼
                     </button>
+
+                    {/* 設定按鈕 */}
+                    {onOpenSettings && (
+                      <button
+                        onClick={() => {
+                          onOpenSettings();
+                          setIsProfileOpen(false);
+                        }}
+                        className="flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-left text-sm text-white/80 hover:bg-white/10 transition-colors"
+                      >
+                        <span className="material-symbols-outlined !text-[20px]">tune</span>
+                        設定
+                      </button>
+                    )}
 
                     {/* 分隔線 */}
                     <div className="my-1 h-px bg-white/5"></div>

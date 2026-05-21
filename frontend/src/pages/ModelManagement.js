@@ -10,6 +10,7 @@ export default function ModelManagement({
   onNavigateToSites,
   onNavigateToModelMgmt,
   onNavigateToChangePassword,
+  onOpenSettings,
   onLogout,
   activePage
 }) {
@@ -34,6 +35,7 @@ export default function ModelManagement({
     onNavigateToSites,
     onNavigateToModelMgmt,
     onNavigateToChangePassword,
+    onOpenSettings,
     onLogout
   };
 

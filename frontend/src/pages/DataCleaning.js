@@ -485,6 +485,7 @@ export default function DataCleaning({
   onOpenCreateSite,
   onNavigateToPredict,
   onNavigateToChangePassword,
+  onOpenSettings,
   onNavigateToModelMgmt,
   onNavigateToRealtime,
 }) {
@@ -879,6 +880,7 @@ export default function DataCleaning({
         onNavigateToRealtime={onNavigateToRealtime}
         onNavigateToModelMgmt={onNavigateToModelMgmt}
         onNavigateToChangePassword={onNavigateToChangePassword}
+        onOpenSettings={onOpenSettings}
         onLogout={onLogout}
       />
 

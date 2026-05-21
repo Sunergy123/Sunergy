@@ -212,6 +212,7 @@ export default function Dashboard({
   onNavigateToRealtime,
   onNavigateToModelMgmt,
   onNavigateToChangePassword,
+  onOpenSettings,
 }) {
   // 尋找 const [searchTerm, setSearchTerm] = useState(''); 附近
   const [stats, setStats] = useState({ total_kwh: 0, total_carbon_reduction: 0 }); 
@@ -434,6 +435,7 @@ export default function Dashboard({
           onNavigateToRealtime={onNavigateToRealtime}
           onNavigateToModelMgmt={onNavigateToModelMgmt}
           onNavigateToChangePassword={onNavigateToChangePassword}
+          onOpenSettings={onOpenSettings}
           onLogout={onLogout}
         />
 

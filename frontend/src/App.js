@@ -26,6 +26,19 @@ import ErrorAnalysisPage from './pages/ErrorAnalysisPage'; // 步驟 6 (誤差�
 import CreateSiteModal from './components/CreateSiteModal';
 import EditSiteModal from './components/EditSiteModal'; // 帶入後端版的編輯功能
 import ChangePasswordModal from './components/ChangePasswordModal';
+import SettingsModal from './components/SettingsModal';
+import { THRESHOLDS_STORAGE_KEY } from './thresholds';
+
+// 清除 localStorage 但保留指定 keys（例如使用者偏好設定）
+const clearLocalStorageExcept = (preserveKeys) => {
+  const saved = {};
+  preserveKeys.forEach((k) => {
+    const v = localStorage.getItem(k);
+    if (v !== null) saved[k] = v;
+  });
+  localStorage.clear();
+  Object.entries(saved).forEach(([k, v]) => localStorage.setItem(k, v));
+};
 
 function App() {
   // ==============================
@@ -38,6 +51,7 @@ function App() {
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [isCreateSiteModalOpen, setIsCreateSiteModalOpen] = useState(false);
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [editingSite, setEditingSite] = useState(null); // 案場編輯狀態
   const [selectedSite, setSelectedSite] = useState(null);
   const [fromSite, setFromSite] = useState(false);
@@ -63,7 +77,8 @@ function App() {
     } else {
       // 2. 重要：如果 session 沒資料，代表是新開的分頁
       // 這時我們要強制清除 localStorage，防止舊的「持久化」資料干擾
-      localStorage.clear(); 
+      // （保留使用者偏好：燈號門檻設定）
+      clearLocalStorageExcept([THRESHOLDS_STORAGE_KEY]);
       setIsLoggedIn(false);
       setCurrentUser(null);
       setCurrentPage('home'); // 回到首頁
@@ -84,7 +99,7 @@ function App() {
     setCurrentUser(null);
     setPredictResult(null);
     sessionStorage.clear();
-    localStorage.clear();
+    clearLocalStorageExcept([THRESHOLDS_STORAGE_KEY]);
     navigate("home");
   };
 
@@ -173,6 +188,7 @@ function App() {
       onNavigateToModelMgmt: () => navigate('model-mgmt'),
 
       onNavigateToChangePassword: () => setIsChangePasswordModalOpen(true),
+      onOpenSettings: () => setIsSettingsModalOpen(true),
 
       onLogout: handleLogout
     };
@@ -278,6 +294,10 @@ function App() {
 
       {isLoggedIn && isChangePasswordModalOpen && (
         <ChangePasswordModal onClose={() => setIsChangePasswordModalOpen(false)} />
+      )}
+
+      {isLoggedIn && isSettingsModalOpen && (
+        <SettingsModal onClose={() => setIsSettingsModalOpen(false)} />
       )}
     </>
   );

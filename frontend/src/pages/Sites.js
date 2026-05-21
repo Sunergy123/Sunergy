@@ -13,6 +13,7 @@ export default function Sites({
   onOpenCreateSite,
   onOpenEditSite,
   onNavigateToChangePassword,
+  onOpenSettings,
   onSelectSite,
   user,
 }) {
@@ -116,6 +117,7 @@ export default function Sites({
         onNavigateToRealtime={onNavigateToRealtime}
         onNavigateToModelMgmt={onNavigateToModelMgmt}
         onNavigateToChangePassword={onNavigateToChangePassword}
+        onOpenSettings={onOpenSettings}
         onLogout={onLogout}
       />
 

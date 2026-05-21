@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { API_BASE } from '../config';
 import PredictionChart from '../components/PredictionChart';
+import { useThresholds, readThresholds } from '../thresholds';
 
 /* ── 公式說明 Tooltip ── */
 function InfoTooltip({ text }) {
@@ -26,17 +27,18 @@ function InfoTooltip({ text }) {
 
 /* ── 誤差燈號（與 PredictSolar 一致） ── */
 const ErrorLight = ({ pct }) => {
+  const t = useThresholds();
   if (pct === null || pct === undefined) return <span className="text-white/20 text-sm">—</span>;
   const raw = Number(pct);
   const v = Math.abs(raw);
   const prefix = raw > 0 ? '+' : '';
-  if (v <= 5) return (
+  if (v <= t.pct.warn) return (
     <span className="inline-flex items-center gap-1.5">
       <span className="size-3 rounded-full bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.5)]" />
       <span className="text-green-400 text-sm font-mono">{prefix}{raw.toFixed(1)}%</span>
     </span>
   );
-  if (v <= 15) return (
+  if (v <= t.pct.danger) return (
     <span className="inline-flex items-center gap-1.5">
       <span className="size-3 rounded-full bg-yellow-400 shadow-[0_0_6px_rgba(234,179,8,0.5)]" />
       <span className="text-yellow-400 text-sm font-mono">{prefix}{raw.toFixed(1)}%</span>
@@ -52,11 +54,12 @@ const ErrorLight = ({ pct }) => {
 
 /* ── 整體診斷燈號（同 PredictSolar） ── */
 const OverallStatus = ({ avgError, label }) => {
+  const t = useThresholds();
   if (avgError === null || avgError === undefined) return null;
   const v = Number(avgError);
   let cfg = { color: 'text-green-400', bg: 'bg-green-500', shadow: 'shadow-[0_0_15px_rgba(34,197,94,0.4)]', label: '發電正常', desc: '預測與實際高度吻合' };
-  if (v > 15) cfg = { color: 'text-red-400', bg: 'bg-red-500', shadow: 'shadow-[0_0_15px_rgba(239,68,68,0.4)]', label: '發電異常', desc: '偏差過大，請檢查設備' };
-  else if (v > 5) cfg = { color: 'text-yellow-400', bg: 'bg-yellow-500', shadow: 'shadow-[0_0_15px_rgba(234,179,8,0.4)]', label: '需留意', desc: '可能有些微環境干擾' };
+  if (v > t.pct.danger) cfg = { color: 'text-red-400', bg: 'bg-red-500', shadow: 'shadow-[0_0_15px_rgba(239,68,68,0.4)]', label: '發電異常', desc: '偏差過大，請檢查設備' };
+  else if (v > t.pct.warn) cfg = { color: 'text-yellow-400', bg: 'bg-yellow-500', shadow: 'shadow-[0_0_15px_rgba(234,179,8,0.4)]', label: '需留意', desc: '可能有些微環境干擾' };
   return (
     <div className="flex items-center gap-3">
       <div className="relative flex items-center justify-center">
@@ -85,12 +88,13 @@ const SortIcon = ({ direction }) => {
   return <span className="text-primary text-xs ml-0.5 font-bold">{direction === 'asc' ? '↑' : '↓'}</span>;
 };
 
-const getErrorColor = (pct) => {
+const getErrorColor = (pct, thresholds) => {
   if (pct === null || pct === undefined) return null;
   const v = Math.abs(Number(pct));
   if (isNaN(v)) return null;
-  if (v <= 5) return { bg: 'C6EFCE', fg: '006100' };
-  if (v <= 15) return { bg: 'FFEB9C', fg: '9C6500' };
+  const t = (thresholds || readThresholds()).pct;
+  if (v <= t.warn) return { bg: 'C6EFCE', fg: '006100' };
+  if (v <= t.danger) return { bg: 'FFEB9C', fg: '9C6500' };
   return { bg: 'FFC7CE', fg: '9C0006' };
 };
 
@@ -141,6 +145,7 @@ export default function RealtimePredict({
   onNavigateToTrain,
   onNavigateToPredict,
   onNavigateToChangePassword,
+  onOpenSettings,
   onNavigateToModelMgmt,
   onNavigateToRealtime,
 }) {
@@ -454,6 +459,7 @@ export default function RealtimePredict({
   const handleDownloadXlsx = () => {
     if (!result) return;
     const dataToExport = sortedRows;
+    const tNow = readThresholds();
     const headerLabels = ['#', ...displayCols.map(getColLabel)];
     const wsData = [headerLabels];
     dataToExport.forEach((row, idx) => {
@@ -473,7 +479,7 @@ export default function RealtimePredict({
       errColIndices.forEach((c) => {
         const cellAddr = XLSX.utils.encode_cell({ r, c });
         const cellVal = wsData[r][c];
-        const colorInfo = getErrorColor(cellVal);
+        const colorInfo = getErrorColor(cellVal, tNow);
         if (colorInfo && ws[cellAddr]) {
           ws[cellAddr].s = {
             fill: { fgColor: { rgb: colorInfo.bg } },
@@ -502,7 +508,7 @@ export default function RealtimePredict({
     saveAs(new Blob([wbout], { type: 'application/octet-stream' }), filename);
   };
 
-  const navProps = { onNavigateToDashboard, onNavigateToTrain, onNavigateToPredict, onNavigateToSites, onNavigateToModelMgmt, onNavigateToChangePassword, onLogout, onNavigateToRealtime };
+  const navProps = { onNavigateToDashboard, onNavigateToTrain, onNavigateToPredict, onNavigateToSites, onNavigateToModelMgmt, onNavigateToChangePassword, onOpenSettings, onLogout, onNavigateToRealtime };
 
   return (
     <div className="min-h-screen w-full bg-background-dark text-white flex flex-col font-sans">

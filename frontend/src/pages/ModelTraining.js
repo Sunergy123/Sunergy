@@ -76,6 +76,7 @@ export default function ModelTraining({
   onLogout,
   onNavigateToSites,
   onNavigateToChangePassword,
+  onOpenSettings,
   activePage
 }) {
   const [splitRatio, setSplitRatio] = useState(80);
@@ -307,6 +308,7 @@ export default function ModelTraining({
         onNavigateToRealtime={onNavigateToRealtime}
         onNavigateToModelMgmt={onNavigateToModelMgmt}
         onNavigateToChangePassword={onNavigateToChangePassword}
+        onOpenSettings={onOpenSettings}
         onLogout={onLogout}
       />
 

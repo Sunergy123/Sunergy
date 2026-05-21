@@ -10,9 +10,12 @@ const CarbonReductionSection = ({ totalGeneration, carbonFactor: carbonFactorPro
     ? Number(totalReductionProp).toFixed(2)
     : (totalGeneration * carbonFactor).toFixed(2);
 
-  // 新增：控制顯示模式與單價的 State
+  // 控制顯示模式與單價的 State
   const [displayMode, setDisplayMode] = useState('carbon'); // 'carbon' (碳排) 或 'power' (發電量)
   const [unitPrice, setUnitPrice] = useState(''); // 預設空字串讓 placeholder 顯示
+  
+  // 🔥 控制卡片翻面的 State
+  const [isFlipped, setIsFlipped] = useState(false);
 
   // 根據目前模式，決定要顯示的數值、單位與標籤
   const currentValue = displayMode === 'carbon' ? totalReduction : (totalGeneration || 0).toFixed(2);
@@ -24,6 +27,7 @@ const CarbonReductionSection = ({ totalGeneration, carbonFactor: carbonFactorPro
   const totalRevenue = (Number(currentValue) * Number(unitPrice || 0)).toLocaleString('zh-TW', { maximumFractionDigits: 2 });
 
   return (
+    <div className="flex flex-col gap-4">
     <div className="flex flex-col gap-6">
       {/* A. SDG 7 說明卡片 */}
       <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-6 shadow-lg">
@@ -37,109 +41,175 @@ const CarbonReductionSection = ({ totalGeneration, carbonFactor: carbonFactorPro
           響應 <span className="text-[#F9AD13] font-bold">SDGs 7 永續發展目標</span>，本系統透過精準預測優化太陽能發電效率，確保人人皆可享有安全、永續且可負擔的潔淨能源，共同邁向淨零碳排。
         </p>
       </div>
-
-      {/* B & C. 數據統計與收益換算 */}
-      <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-gradient-to-br from-green-900/20 to-white/[0.03] p-6 shadow-lg">
+    </div>
+    
+    <div className="w-full [perspective:1000px] min-h-[580px]">
+      
+      {/* 翻轉本體，依據 isFlipped 狀態旋轉 180 度 */}
+      <div className={`relative w-full h-full transition-transform duration-700 [transform-style:preserve-3d] ${isFlipped ? '[transform:rotateY(180deg)]' : ''}`}>
         
-        {/* 標題與操作按鈕區 */}
-        <div className="flex justify-between items-center">
-          <h3 className="text-base font-medium text-white/80 flex items-center gap-2">
-            <span className={`material-symbols-outlined ${displayMode === 'carbon' ? 'text-green-400' : 'text-yellow-400'}`}>
-              {displayMode === 'carbon' ? 'eco' : 'bolt'}
-            </span>
-            {displayMode === 'carbon' ? '環境減碳效益' : '發電量統計'}
-          </h3>
+        {/* ==================== 正面：資訊科普與參考指南 ==================== */}
+        <div className={`absolute inset-0 w-full h-full [backface-visibility:hidden] rounded-xl border border-white/10 bg-white/[0.03] p-6 shadow-lg flex flex-col justify-between ${isFlipped ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
+          <div>
+            <h3 className="text-lg font-bold text-white/90 flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined text-[#F9AD13]">workspace_premium</span>
+              再生能源憑證與效益指南
+            </h3>
+            <p className="text-xs text-white/60 mb-4 leading-relaxed">
+              本系統精準預測之電力產出可轉化為多元永續資產。依據經濟部與環境部現行法規，太陽能案場之環境與經濟效益主要分為以下四種應用管道：
+            </p>
 
-          <div className="flex gap-2">
-            {/* 單位切換 Toggle */}
-            <div className="flex bg-white/5 rounded-lg p-1 border border-white/10">
-              <button
-                onClick={() => setDisplayMode('carbon')}
-                className={`px-3 py-1 text-xs rounded-md transition ${displayMode === 'carbon' ? 'bg-green-500/20 text-green-400 font-bold' : 'text-white/60 hover:text-white'}`}
-              >
-                碳排
-              </button>
-              <button
-                onClick={() => setDisplayMode('power')}
-                className={`px-3 py-1 text-xs rounded-md transition ${displayMode === 'power' ? 'bg-yellow-500/20 text-yellow-400 font-bold' : 'text-white/60 hover:text-white'}`}
-              >
-                度數
-              </button>
+            <div className="space-y-2.5">
+              {/* 1. 台電躉購制度 (FIT) */}
+              <div className="p-3 bg-white/5 rounded-lg border border-white/5 hover:border-yellow-500/30 transition-colors">
+                <h4 className="text-yellow-400 font-bold text-xs mb-1">1. 台電躉購制度 (FIT)</h4>
+                <p className="text-[11px] text-white/50 leading-relaxed">依據《再生能源發展條例》，案場可選擇與台電簽署 20 年固定躉購費率合約，全額躉售予台電取得長期穩定的躉購收益。</p>
+              </div>
+
+              {/* 2. 綠電轉供與企業購電 (CPPA) */}
+              <div className="p-3 bg-white/5 rounded-lg border border-white/5 hover:border-orange-400/30 transition-colors">
+                <h4 className="text-orange-400 font-bold text-xs mb-1">2. 綠電轉供與企業購電 (CPPA)</h4>
+                <p className="text-[11px] text-white/50 leading-relaxed">發電業者亦可跳脫台電收購，直接或透過售電業，將電力「轉供」給有減碳需求之民間企業，藉由自由市場交易極大化每度電的商業產值。</p>
+              </div>
+
+              {/* 3. 台灣再生能源憑證 (T-REC) */}
+              <div className="p-3 bg-white/5 rounded-lg border border-white/5 hover:border-green-400/30 transition-colors">
+                <h4 className="text-green-400 font-bold text-xs mb-1">3. 台灣再生能源憑證 (T-REC)</h4>
+                <p className="text-[11px] text-white/50 leading-relaxed">經經濟部標準檢驗局審查核發，每發滿 1,000 度綠電即可取得 1 張 T-REC。此憑證為綠電的「身分證」，可用於滿足供應鏈 RE100 審查需求。</p>
+              </div>
+
+              {/* 4. 自願減量額度與碳交易 (TCX) */}
+              <div className="p-3 bg-white/5 rounded-lg border border-white/5 hover:border-blue-400/30 transition-colors">
+                <h4 className="text-blue-400 font-bold text-xs mb-1">4. 自願減量額度與碳交易 (TCX)</h4>
+                <p className="text-[11px] text-white/50 leading-relaxed">依《氣候變遷因應法》，未參與憑證轉供之特定案場可申請自願減量專案以取得「國內碳權」，未來可在臺灣碳權交易所 (TCX) 交易或用以抵減國內碳費。</p>
+              </div>
             </div>
-
-            <button
-              onClick={onOpenModal}
-              className="text-xs bg-white/10 px-3 py-1 rounded-lg hover:bg-white/20"
-            >
-              選擇檔案
-            </button>
           </div>
-        </div>
-        
-        {/* 大數字顯示區 */}
-        <div className="text-center my-2">
-          <p className={`text-5xl font-black ${displayMode === 'carbon' ? 'text-green-400' : 'text-yellow-400'}`}>
-            {currentValue} <span className="text-lg font-normal text-white/60">{currentUnit}</span>
-          </p>
-          <p className="text-xs text-white/40 mt-2 tracking-widest uppercase">
-            {currentLabel}
-          </p>
+
+          <button
+            onClick={() => setIsFlipped(true)}
+            className="mt-4 w-full py-2.5 bg-primary/10 border border-primary/20 hover:bg-primary/20 text-primary rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
+          >
+            <span className="material-symbols-outlined text-sm">calculate</span>
+            進入發電與收益試算工具 ➔
+          </button>
         </div>
 
-        {/* 收益換算輸入與顯示區 */}
-        <div className="flex items-center justify-between bg-black/30 rounded-xl p-4 mt-2 border border-white/5">
-          <div className="flex flex-col gap-2 w-[45%]">
-            <label className="text-[10px] text-white/50 uppercase font-bold tracking-wider">{priceLabel}</label>
-            <div className="flex items-center gap-2">
-              <span className="text-white/50 font-bold">$</span>
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                value={unitPrice}
-                onChange={(e) => setUnitPrice(e.target.value)}
-                placeholder="0.0"
-                className="w-full bg-white/5 border border-white/10 rounded-lg py-1.5 px-3 text-sm text-white focus:outline-none focus:border-green-400/50 transition-colors"
-              />
+
+        {/* ==================== 背面：轉換單位與計算機功能 ==================== */}
+        <div className={`absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] flex flex-col gap-4 rounded-xl border border-white/10 bg-gradient-to-br from-green-900/20 to-white/[0.03] p-6 shadow-lg ${!isFlipped ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
+          
+          {/* 標題與操作按鈕區 */}
+          <div className="flex justify-between items-center">
+            <h3 className="text-base font-medium text-white/80 flex items-center gap-2">
+              <span className={`material-symbols-outlined ${displayMode === 'carbon' ? 'text-green-400' : 'text-yellow-400'}`}>
+                {displayMode === 'carbon' ? 'eco' : 'bolt'}
+              </span>
+              {displayMode === 'carbon' ? '環境減碳效益' : '發電量統計'}
+            </h3>
+
+            <div className="flex gap-2">
+              {/* 單位切換 Toggle */}
+              <div className="flex bg-white/5 rounded-lg p-1 border border-white/10">
+                <button
+                  onClick={() => setDisplayMode('carbon')}
+                  className={`px-3 py-1 text-xs rounded-md transition ${displayMode === 'carbon' ? 'bg-green-500/20 text-green-400 font-bold' : 'text-white/60 hover:text-white'}`}
+                >
+                  碳排
+                </button>
+                <button
+                  onClick={() => setDisplayMode('power')}
+                  className={`px-3 py-1 text-xs rounded-md transition ${displayMode === 'power' ? 'bg-yellow-500/20 text-yellow-400 font-bold' : 'text-white/60 hover:text-white'}`}
+                >
+                  度數
+                </button>
+              </div>
+
+              <button
+                onClick={onOpenModal}
+                className="text-xs bg-white/10 px-3 py-1 rounded-lg hover:bg-white/20"
+              >
+                選擇檔案
+              </button>
             </div>
           </div>
           
-          <div className="w-[1px] h-10 bg-white/10 mx-4"></div>
-
-          <div className="flex flex-col items-end w-[45%]">
-            <label className="text-[10px] text-white/50 uppercase font-bold tracking-wider">預估總價值 (NTD)</label>
-            <p className="text-2xl font-black text-white mt-1">
-              <span className="text-lg text-white/50 font-normal mr-1">$</span>
-              {totalRevenue}
+          {/* 大數字顯示區 */}
+          <div className="text-center my-2">
+            <p className={`text-5xl font-black ${displayMode === 'carbon' ? 'text-green-400' : 'text-yellow-400'}`}>
+              {currentValue} <span className="text-lg font-normal text-white/60">{currentUnit}</span>
+            </p>
+            <p className="text-xs text-white/40 mt-2 tracking-widest uppercase">
+              {currentLabel}
             </p>
           </div>
-        </div>
 
-        {/* 計算公式說明 */}
-        <div className="mt-2 pt-4 border-t border-white/5">
-          <p className="text-[10px] text-white/30 uppercase font-bold mb-2">計算公式說明</p>
-          <div className="bg-black/20 rounded-lg p-3 font-mono text-[11px] text-white/50 space-y-1">
-            {displayMode === 'carbon' ? (
-              <>
-                <p className="text-green-400/80">減碳量 (kgCO₂e) = 太陽能發電量(kWh) × 電力排碳係數({carbonFactor})</p>
-                <p>總價值 = 減碳量 × 碳權單價</p>
-              </>
-            ) : (
-              <>
-                <p className="text-yellow-400/80">發電量 (kWh) = 選擇檔案中之太陽能總發電量加總</p>
-                <p>總價值 = 發電量 × 售電單價</p>
-              </>
-            )}
+          {/* 收益換算輸入與顯示區 */}
+          <div className="flex items-center justify-between bg-black/30 rounded-xl p-4 mt-2 border border-white/5">
+            <div className="flex flex-col gap-2 w-[45%]">
+              <label className="text-[10px] text-white/50 uppercase font-bold tracking-wider">{priceLabel}</label>
+              <div className="flex items-center gap-2">
+                <span className="text-white/50 font-bold">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={unitPrice}
+                  onChange={(e) => setUnitPrice(e.target.value)}
+                  placeholder="0.0"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg py-1.5 px-3 text-sm text-white focus:outline-none focus:border-green-400/50 transition-colors"
+                />
+              </div>
+            </div>
+            
+            <div className="w-[1px] h-10 bg-white/10 mx-4"></div>
+
+            <div className="flex flex-col items-end w-[45%]">
+              <label className="text-[10px] text-white/50 uppercase font-bold tracking-wider">預估總價值 (NTD)</label>
+              <p className="text-2xl font-black text-white mt-1">
+                <span className="text-lg text-white/50 font-normal mr-1">$</span>
+                {totalRevenue}
+              </p>
+            </div>
+          </div>
+
+          {/* 計算公式說明 */}
+          <div className="mt-2 pt-4 border-t border-white/5">
+            <p className="text-[10px] text-white/30 uppercase font-bold mb-2">計算公式說明</p>
+            <div className="bg-black/20 rounded-lg p-3 font-mono text-[11px] text-white/50 space-y-1">
+              {displayMode === 'carbon' ? (
+                <>
+                  <p className="text-green-400/80">減碳量 (kgCO₂e) = 太陽能發電量(kWh) × 電力排碳係數({carbonFactor})</p>
+                  <p>總價值 = 減碳量 × 碳權單價</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-yellow-400/80">發電量 (kWh) = 選擇檔案中之太陽能總發電量加總</p>
+                  <p>總價值 = 發電量 × 售電單價</p>
+                </>
+              )}
+            </div>
           </div>
           
-        </div>
           {/* 註解 */}
           <div className="text-[10px] text-white/30 mt-2 ml-1 leading-relaxed">
             <p>* 註：請留意兩者的計價單位不同，因此相同的單價數值會產生不同的總價值：</p>
             <p className="ml-6">- 售電計價：元 / 度 (kWh)</p>
             <p className="ml-6">- 碳權計價：元 / 公斤 (kgCO₂e)</p>
           </div>
+
+          {/* 🔥 返回按鈕 (置於底部) */}
+          <button
+            onClick={() => setIsFlipped(false)}
+            className="mt-auto w-full py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-xs text-white/60 font-medium flex items-center justify-center gap-2 transition"
+          >
+            <span className="material-symbols-outlined text-sm">arrow_back</span>
+            返回資訊說明
+          </button>
+        </div>
+
       </div>
+    </div>
     </div>
   );
 };
@@ -198,6 +268,7 @@ const SystemIntroduction = () => (
 
       </div>
     </div>
+
   </div>
 );
 
@@ -455,174 +526,178 @@ export default function Dashboard({
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-7 flex flex-col gap-16">
+            <div className="lg:col-span-7 flex flex-col gap-20">
               <section>
                 <h2 className="text-xl font-bold mb-4">系統願景</h2>
                 <SystemIntroduction />
               </section>
 
-              <section className="bg-white/[0.02] rounded-2xl p-6 border border-white/10">
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-6">
+              {/* 2. 已建立模型 */}
+                <section className="bg-white/[0.02] rounded-2xl p-6 border border-white/10">
+                  <div className="flex justify-between items-center mb-6">
+                    <div className="flex items-center gap-3">
 
-                    <h2 className="text-xl font-bold">已建立模型</h2>
+                      <h2 className="text-xl font-bold">已建立模型</h2>
 
-                    <div className="flex bg-white/5 rounded-lg p-1 border border-white/10">
-                      <button
-                        onClick={() => setModelTab('all')}
-                        className={`px-3 py-1 text-xs rounded-md transition ${
-                          modelTab === 'all'
-                            ? 'bg-primary text-black font-bold'
-                            : 'text-white/60 hover:text-white'
-                        }`}
-                      >
-                        全部
-                      </button>
+                      <div className="flex bg-white/5 rounded-lg p-1 border border-white/10">
+                        <button
+                          onClick={() => setModelTab('all')}
+                          className={`px-3 py-1 text-xs rounded-md transition ${
+                            modelTab === 'all'
+                              ? 'bg-primary text-black font-bold'
+                              : 'text-white/60 hover:text-white'
+                          }`}
+                        >
+                          全部
+                        </button>
 
-                      <button
-                        onClick={() => setModelTab('public')}
-                        className={`px-3 py-1 text-xs rounded-md transition ${
-                          modelTab === 'public'
-                            ? 'bg-primary text-black font-bold'
-                            : 'text-white/60 hover:text-white'
-                        }`}
-                      >
-                        公用模型
-                      </button>
+                        <button
+                          onClick={() => setModelTab('public')}
+                          className={`px-3 py-1 text-xs rounded-md transition ${
+                            modelTab === 'public'
+                              ? 'bg-primary text-black font-bold'
+                              : 'text-white/60 hover:text-white'
+                          }`}
+                        >
+                          公用模型
+                        </button>
+                      </div>
                     </div>
+
+                    <input
+                      type="text"
+                      placeholder="搜尋模型..."
+                      className="bg-white/5 border border-white/10 rounded-lg py-1 px-4 text-xs focus:outline-none focus:border-primary/40 transition-all"
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
                   </div>
 
-                  <input
-                    type="text"
-                    placeholder="搜尋模型..."
-                    className="bg-white/5 border border-white/10 rounded-lg py-1 px-4 text-xs focus:outline-none focus:border-primary/40 transition-all"
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
+                  <div className="space-y-4 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
+                    {loadingModels ? (
+                      <p className="text-sm text-white/50">模型載入中...</p>
+                    ) : modelError ? (
+                      <p className="text-sm text-red-400">{modelError}</p>
+                    ) : filteredModels.length === 0 ? (
+                      <p className="text-sm text-white/50">目前沒有已建立模型</p>
+                    ) : (
+                      filteredModels.map((model) => (
+                        <div
+                          key={model.id}
+                          className="flex justify-between border-b border-white/5 pb-4 last:border-0"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-lg font-bold">{model.name}</h3>
+                            </div>
 
-                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                  {loadingModels ? (
-                    <p className="text-sm text-white/50">模型載入中...</p>
-                  ) : modelError ? (
-                    <p className="text-sm text-red-400">{modelError}</p>
-                  ) : filteredModels.length === 0 ? (
-                    <p className="text-sm text-white/50">目前沒有已建立模型</p>
-                  ) : (
-                    filteredModels.map((model) => (
-                      <div
-                        key={model.id}
-                        className="flex justify-between border-b border-white/5 pb-4 last:border-0"
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-lg font-bold">{model.name}</h3>
+                            <p className="text-xs text-white/30 mt-1 font-mono">
+                              訓練日期: {model.date}
+                            </p>
+                            <p className="text-xs text-white/20 mt-1">
+                              類型: {model.type} | 使用資料：{model.fileName}
+                            </p>
                           </div>
 
-                          <p className="text-xs text-white/30 mt-1 font-mono">
-                            訓練日期: {model.date}
-                          </p>
-                          <p className="text-xs text-white/20 mt-1">
-                            類型: {model.type} | 使用資料：{model.fileName}
-                          </p>
+                          
                         </div>
+                      ))
+                    )}
+                  </div>
+                </section>
+              {/* 3. 最常用模型排名 */}
+                <section>
+                  <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary">leaderboard</span>
+                    最常用模型排名
+                  </h2>
 
-                        
+                  <div className="flex flex-col gap-4">
+                    {topModels.length === 0 ? (
+                      <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-5">
+                        <p className="text-white/40 text-sm">目前尚無模型資料</p>
                       </div>
-                    ))
-                  )}
-                </div>
-              </section>
-              <section>
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary">leaderboard</span>
-                  最常用模型排名
-                </h2>
+                    ) : (
+                      topModels.map((model, index) => (
+                        <div
+                          key={model.id}
+                          className="bg-white/[0.03] border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-primary/50 transition-all"
+                        >
+                          <div className="flex items-center gap-5">
+                            <div
+                              className={`text-2xl font-black italic ${
+                                index === 0 ? 'text-primary' : 'text-white/20'
+                              }`}
+                            >
+                              0{index + 1}
+                            </div>
 
-                <div className="flex flex-col gap-4">
-                  {topModels.length === 0 ? (
-                    <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-5">
-                      <p className="text-white/40 text-sm">目前尚無模型資料</p>
-                    </div>
-                  ) : (
-                    topModels.map((model, index) => (
-                      <div
-                        key={model.id}
-                        className="bg-white/[0.03] border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-primary/50 transition-all"
-                      >
-                        <div className="flex items-center gap-5">
-                          <div
-                            className={`text-2xl font-black italic ${
-                              index === 0 ? 'text-primary' : 'text-white/20'
-                            }`}
-                          >
-                            0{index + 1}
-                          </div>
-
-                          <div className="flex-1">
-                            <div className="flex justify-between items-start mb-1 gap-3 flex-wrap">
-                              <h3 className="font-bold text-white text-lg min-w-0 flex-1 break-words leading-snug">{model.name}</h3>
-                              <div className="flex flex-col items-end gap-1 flex-shrink-0 self-start">
-                                {model.isPublic && (
-                                  <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
-                                    公用
-                                  </span>
-                                )}
-                                <div className="text-right">
-                                  <span className="text-[9px] text-white/40 block uppercase leading-none mb-1 whitespace-nowrap">
-                                    使用次數
-                                  </span>
-                                  <span className="text-primary font-mono font-bold text-base whitespace-nowrap">
-                                    {model.usage} 次
-                                  </span>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-start mb-1 gap-3 flex-wrap">
+                                <h3 className="font-bold text-white text-lg min-w-0 flex-1 break-words leading-snug">{model.name}</h3>
+                                <div className="flex flex-col items-end gap-1 flex-shrink-0 self-start">
+                                  {model.isPublic && (
+                                    <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
+                                      公用
+                                    </span>
+                                  )}
+                                  <div className="text-right">
+                                    <span className="text-[9px] text-white/40 block uppercase leading-none mb-1 whitespace-nowrap">
+                                      使用次數
+                                    </span>
+                                    <span className="text-primary font-mono font-bold text-base whitespace-nowrap">
+                                      {model.usage} 次
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
 
-                            <div className="flex justify-center my-3">
-                              <div className="w-4/5 h-[1px] bg-white/5"></div>
-                            </div>
+                              <div className="flex justify-center my-3">
+                                <div className="w-4/5 h-[1px] bg-white/5"></div>
+                              </div>
 
-                            <div className="flex justify-between items-end">
-                              {/* <div>
-                                <p className="text-[10px] text-white/30 uppercase leading-none mb-1">
-                                  歷史準確度
-                                </p>
-                                <p className="text-sm font-bold text-green-400">{model.acc}</p>
-                              </div> */}
-                              <div>
-                                <p className="text-[10px] text-white/30 uppercase leading-none mb-1">
-                                  模型資訊
-                                </p>
+                              <div className="flex justify-between items-end">
+                                {/* <div>
+                                  <p className="text-[10px] text-white/30 uppercase leading-none mb-1">
+                                    歷史準確度
+                                  </p>
+                                  <p className="text-sm font-bold text-green-400">{model.acc}</p>
+                                </div> */}
+                                <div>
+                                  <p className="text-[10px] text-white/30 uppercase leading-none mb-1">
+                                    模型資訊
+                                  </p>
 
-                                <div className="text-sm text-white/70 font-mono space-y-1">
+                                  <div className="text-sm text-white/70 font-mono space-y-1">
 
-                                  {/* 第一行 */}
-                                  <div className="break-words">
-                                    {model.fileName} ｜ {model.date}
+                                    {/* 第一行 */}
+                                    <div className="break-words">
+                                      {model.fileName} ｜ {model.date}
+                                    </div>
+
+                                    {/* 第三行：指標（重點🔥） */}
+                                    <div className="grid grid-cols-2 gap-x-4 text-xs text-green-400">
+                                      <span>R²: {model.r2 ?? '—'}</span>
+                                      <span>WMAPE: {model.wmape ?? '—'}</span>
+                                      <span>RMSE: {model.rmse ?? '—'}</span>
+                                      <span>MAE: {model.mae ?? '—'}</span>
+                                    </div>
+
                                   </div>
-
-                                  {/* 第三行：指標（重點🔥） */}
-                                  <div className="grid grid-cols-2 gap-x-4 text-xs text-green-400">
-                                    <span>R²: {model.r2 ?? '—'}</span>
-                                    <span>WMAPE: {model.wmape ?? '—'}</span>
-                                    <span>RMSE: {model.rmse ?? '—'}</span>
-                                    <span>MAE: {model.mae ?? '—'}</span>
-                                  </div>
-
                                 </div>
                               </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </section>
+                      ))
+                    )}
+                  </div>
+                </section>
+              </div>
             </div>
 
             {/* --- Dashboard.js 右側欄位 (lg:col-span-5) --- */}
-            <div className="lg:col-span-5 flex flex-col gap-8">
+            <div className="lg:col-span-5 flex flex-col gap-4">
               
               {/* 使用新封裝的減碳效益區塊，取代舊的兩個卡片 */}
               <CarbonReductionSection
@@ -645,7 +720,7 @@ export default function Dashboard({
             {/* ===== 案場 ===== */}
             <h2 className="text-lg font-bold mb-2">選擇案場（可多選）</h2>
 
-            {/* ✅ 只讓案場滾動 */}
+            {/* 只讓案場滾動 */}
             <div className="bg-black rounded p-2 max-h-[120px] overflow-y-auto space-y-2 mb-4">
               {sites.map(site => (
                 <label key={site.site_id} className="flex items-center gap-2 text-sm cursor-pointer">

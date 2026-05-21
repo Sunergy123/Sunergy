@@ -42,6 +42,7 @@ export default function SolarEstimationCard() {
   const [result, setResult] = useState(null);
   const [location, setLocation] = useState('');
   const [address, setAddress] = useState('');
+  const [searchMessage, setSearchMessage] = useState('');
 
   // Loading
   const [loading, setLoading] = useState(false);
@@ -63,19 +64,19 @@ export default function SolarEstimationCard() {
     const priceNum = parseFloat(electricityPrice);
 
     if (Number.isNaN(latNum) || Number.isNaN(lonNum)) {
-      alert('請先選擇地點(點地圖或搜尋)');
+      setSearchMessage('請先選擇地點(點地圖或搜尋)');
       return;
     }
     if (!(capacityNum > 0)) {
-      alert('裝置容量必須大於 0');
+      setSearchMessage('裝置容量必須大於 0');
       return;
     }
     if (!(prNum > 0 && prNum <= 1)) {
-      alert('系統效率 PR 必須介於 0 ~ 1 之間');
+      setSearchMessage('系統效率 PR 必須介於 0 ~ 1 之間');
       return;
     }
     if (!(priceNum >= 0)) {
-      alert('請輸入有效的每度電價格');
+      setSearchMessage('請輸入有效的每度電價格');
       return;
     }
 
@@ -130,7 +131,7 @@ export default function SolarEstimationCard() {
 
       if (reqId === estimateReqIdRef.current) {
         console.error(error);
-        alert('評估失敗:' + (error.message || '未知錯誤'));
+        setSearchMessage('評估失敗:' + (error.message || '未知錯誤'));
       }
 
     } finally {
@@ -169,7 +170,7 @@ export default function SolarEstimationCard() {
   const searchLocation = async () => {
 
     if (!location.trim()) {
-      alert('請輸入地點');
+      setSearchMessage('請輸入地點');
       return;
     }
 
@@ -177,34 +178,89 @@ export default function SolarEstimationCard() {
 
     try {
 
-      const res = await fetch(
-        `${NOMINATIM_BASE}/search?q=${encodeURIComponent(location)}&format=json&limit=1`,
-        { headers: { 'Accept-Language': 'zh-TW' } }
-      );
+      let originalQuery = location.trim();
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const fallbackQueries = [
+        originalQuery, // 完整地址
+        originalQuery.replace(/\d+號?$/, ''), // 去掉號
+        originalQuery.replace(/\d+號?$/, '').replace(/\d+弄$/, ''), // 去掉弄
+        originalQuery.replace(/\d+號?$/, '').replace(/\d+弄$/, '').replace(/\d+巷$/, '') // 去掉巷
+      ];
 
-      const data = await res.json();
+      let data = [];
+
+      for (const query of fallbackQueries) {
+
+        const res = await fetch(
+          `${NOMINATIM_BASE}/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=tw`,
+          {
+            headers: {
+              'Accept-Language': 'zh-TW'
+            }
+          }
+        );
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        data = await res.json();
+
+        if (data.length > 0) {
+          break;
+        }
+      }
 
       if (data.length > 0) {
 
-        setLat(data[0].lat);
-        setLon(data[0].lon);
-        setAddress(data[0].display_name);
+        const result = data[0];
 
-        // 觸發地圖飛行 (僅搜尋時)
+        // 使用者是否有輸入門牌號
+        const hasHouseNumber = /\d+號/.test(originalQuery);
+
+        // 是否精準匹配
+        const isExactMatch =
+          result.display_name.replace(/\s+/g, '')
+            .includes(originalQuery.replace(/\s+/g, ''));
+
+        // 顯示訊息邏輯
+        if (hasHouseNumber && !isExactMatch) {
+
+          setSearchMessage(
+            '⚠️ 無法找到精準門牌，已導向附近位置，請於地圖上自行微調'
+          );
+
+        } else if (!hasHouseNumber) {
+
+          setSearchMessage(
+            'ℹ️ 目前為區域定位，若需更精準位置請輸入完整門牌'
+          );
+
+        } else {
+
+          setSearchMessage('');
+
+        }
+
+        setLat(result.lat);
+        setLon(result.lon);
+
+        // 直接反查目前地圖位置
+        await reverseGeocode(result.lat, result.lon);
+
+        // 地圖 flyTo
         setFlyToTrigger((t) => t + 1);
 
       } else {
 
-        alert('找不到地點');
+        setSearchMessage('找不到地點');
 
       }
 
     } catch (error) {
 
       console.error(error);
-      alert('搜尋失敗');
+      setSearchMessage('搜尋失敗');
 
     } finally {
 
@@ -252,6 +308,12 @@ export default function SolarEstimationCard() {
           >
             {searchLoading ? '搜尋中...' : '搜尋地點'}
           </button>
+
+          {searchMessage && (
+            <div className="text-yellow-400 text-sm mt-2">
+              {searchMessage}
+            </div>
+          )}
 
         </div>
 

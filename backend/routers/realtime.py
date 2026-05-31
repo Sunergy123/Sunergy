@@ -6,14 +6,14 @@ from pydantic import BaseModel
 from typing import Optional
 from collections import deque
 from threading import RLock
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 import json as _json
 import uuid
 import numpy as np
 
 from database import get_db
-from models import TrainedModel
+from models import TrainedModel, Site, Upload, SiteData
 from routers.train_utils import HAS_XGBOOST, _to_native
 
 if HAS_XGBOOST:
@@ -31,12 +31,22 @@ class _RtState:
 
     def __init__(self):
         self.lock = RLock()
-        self.buffer: deque = deque(maxlen=self.BUFFER_MAX)  # tick dicts
+        self.buffer: deque = deque(maxlen=self.BUFFER_MAX)  # 預測/顯示用的滑動視窗
         self.next_id = 1
         self.last_push_at: Optional[str] = None
         self.pred_cache: dict = {}      # (tick_id, model_id) -> float
         self.model_cache: dict = {}     # model_id -> {model_type, feature_cols, target, model}
         self.session_id = uuid.uuid4().hex
+
+        # 自動歸檔:啟動到停止之間,所有 tick 都會複製一份到 archive_buffer(無上限)
+        # 停止時一次性建 Upload + 批次寫入 SiteData(跟手動 CSV 上傳同一條路徑)
+        self.auto_archive = {
+            "enabled": False,
+            "site_id": None,
+            "site_name": None,
+            "started_at": None,
+        }
+        self.archive_buffer: list = []  # session 期間累積的 tick 副本
 
     def reset(self):
         self.buffer.clear()
@@ -44,6 +54,14 @@ class _RtState:
         self.last_push_at = None
         self.pred_cache.clear()
         self.session_id = uuid.uuid4().hex
+        # reset 也順手關掉自動歸檔並丟棄未存的 archive 資料
+        self.auto_archive = {
+            "enabled": False,
+            "site_id": None,
+            "site_name": None,
+            "started_at": None,
+        }
+        self.archive_buffer = []
 
 
 _state = _RtState()
@@ -78,7 +96,7 @@ def push(tick: TickIn):
         tick_id = _state.next_id
         _state.next_id += 1
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        _state.buffer.append({
+        record = {
             "tick_id": tick_id,
             "received_at": ts,
             "the_date": tick.the_date,
@@ -87,7 +105,11 @@ def push(tick: TickIn):
             "GI": float(tick.gi),
             "TM": float(tick.tm),
             "EAC": float(tick.eac) if tick.eac is not None else None,
-        })
+        }
+        _state.buffer.append(record)
+        # 若自動歸檔啟用中,複製一份到 archive_buffer(不受 BUFFER_MAX 限制)
+        if _state.auto_archive["enabled"]:
+            _state.archive_buffer.append(dict(record))
         _state.last_push_at = ts
         sz = len(_state.buffer)
     return {"ok": True, "tick_id": tick_id, "buffer_size": sz}
@@ -104,12 +126,179 @@ def clear():
 @router.get("/status")
 def status():
     with _state.lock:
+        trainable = sum(1 for t in _state.buffer if t.get("EAC") is not None)
+        aa = dict(_state.auto_archive)
+        aa["collected_count"] = len(_state.archive_buffer)
+        aa["trainable_count"] = sum(1 for t in _state.archive_buffer if t.get("EAC") is not None)
         return {
             "buffer_size": len(_state.buffer),
+            "trainable_size": trainable,
             "last_push_at": _state.last_push_at,
             "session_id": _state.session_id,
             "next_id": _state.next_id,
+            "auto_archive": aa,
         }
+
+
+# ═══════════════════════════════════════
+#  自動歸檔(教授建議:平台自動把即時資料儲存,供後續訓練)
+#  ── 啟動只設定狀態,停止時一次性 batch insert,跟手動 CSV 上傳同樣的 Upload+SiteData 結構
+# ═══════════════════════════════════════
+def _tick_to_sitedata(tick: dict, site_id: int, upload_id: int, file_name: str):
+    """把單筆 tick(需含 EAC)轉為 SiteData ORM 物件;解析失敗回 None。"""
+    if tick.get("EAC") is None:
+        return None
+    d_str = tick.get("the_date")
+    h_val = tick.get("the_hour")
+    rec_at = tick.get("received_at")
+    if d_str:
+        try:
+            d = datetime.strptime(d_str, "%Y-%m-%d").date()
+        except Exception:
+            return None
+    else:
+        try:
+            d = datetime.strptime(rec_at, "%Y-%m-%d %H:%M:%S").date()
+        except Exception:
+            return None
+    if h_val is None:
+        try:
+            h_val = datetime.strptime(rec_at, "%Y-%m-%d %H:%M:%S").hour
+        except Exception:
+            return None
+    try:
+        h_int = int(h_val)
+        if not (0 <= h_int <= 23):
+            return None
+    except Exception:
+        return None
+    return SiteData(
+        site_id=site_id,
+        upload_id=upload_id,
+        the_date=d,
+        the_hour=h_int,
+        gi=float(tick["GI"]) if tick.get("GI") is not None else None,
+        tm=float(tick["TM"]) if tick.get("TM") is not None else None,
+        eac=float(tick["EAC"]),
+        data_name=file_name,
+    )
+
+
+class AutoArchiveStartIn(BaseModel):
+    site_id: int
+
+
+@router.post("/auto_archive/start")
+def auto_archive_start(payload: AutoArchiveStartIn, db: Session = Depends(get_db)):
+    site = db.query(Site).filter(Site.site_id == payload.site_id).first()
+    if not site:
+        raise HTTPException(404, f"案場不存在 (site_id={payload.site_id})")
+
+    with _state.lock:
+        if _state.auto_archive["enabled"]:
+            raise HTTPException(400, "自動歸檔已在進行中,請先停止再重新啟動")
+        _state.auto_archive = {
+            "enabled": True,
+            "site_id": payload.site_id,
+            "site_name": site.site_name,
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        _state.archive_buffer = []   # 全新 session 從零開始累積
+        return {
+            "ok": True,
+            **_state.auto_archive,
+            "collected_count": 0,
+            "trainable_count": 0,
+        }
+
+
+@router.post("/auto_archive/stop")
+def auto_archive_stop(db: Session = Depends(get_db)):
+    """停止自動歸檔,把整個 session 累積的 ticks 一次性寫入 DB(等同手動 CSV 上傳)。"""
+    with _state.lock:
+        if not _state.auto_archive["enabled"]:
+            return {"ok": True, "was_enabled": False}
+        site_id = _state.auto_archive["site_id"]
+        site_name = _state.auto_archive["site_name"]
+        started_at = _state.auto_archive["started_at"]
+        snapshot = list(_state.archive_buffer)
+        # 先把狀態關閉,避免邊寫邊有新資料進來
+        _state.auto_archive = {
+            "enabled": False,
+            "site_id": None,
+            "site_name": None,
+            "started_at": None,
+        }
+        _state.archive_buffer = []
+
+    trainable = [t for t in snapshot if t.get("EAC") is not None]
+    if not trainable:
+        return {
+            "ok": True,
+            "was_enabled": True,
+            "upload_id": None,
+            "rows_saved": 0,
+            "rows_skipped": 0,
+            "collected_count": len(snapshot),
+            "message": "本次 session 沒有收集到含實際發電量的資料,未建立資料集",
+        }
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_name = f"即時自動歸檔_{ts}.realtime"
+
+    new_upload = Upload(file_name=file_name, site_id=site_id)
+    db.add(new_upload)
+    db.commit()
+    db.refresh(new_upload)
+    upload_id = new_upload.upload_id
+
+    entries = []
+    skipped = 0
+    for t in trainable:
+        e = _tick_to_sitedata(t, site_id, upload_id, file_name)
+        if e is None:
+            skipped += 1
+        else:
+            entries.append(e)
+
+    if not entries:
+        db.delete(new_upload)
+        db.commit()
+        return {
+            "ok": True,
+            "was_enabled": True,
+            "upload_id": None,
+            "rows_saved": 0,
+            "rows_skipped": skipped,
+            "collected_count": len(snapshot),
+            "message": "本次資料皆無法解析時間欄位,未建立資料集",
+        }
+
+    db.add_all(entries)
+    db.commit()
+
+    return {
+        "ok": True,
+        "was_enabled": True,
+        "upload_id": upload_id,
+        "site_id": site_id,
+        "site_name": site_name,
+        "file_name": file_name,
+        "rows_saved": len(entries),
+        "rows_skipped": skipped,
+        "collected_count": len(snapshot),
+        "started_at": started_at,
+        "stopped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+@router.get("/auto_archive/status")
+def auto_archive_status():
+    with _state.lock:
+        aa = dict(_state.auto_archive)
+        aa["collected_count"] = len(_state.archive_buffer)
+        aa["trainable_count"] = sum(1 for t in _state.archive_buffer if t.get("EAC") is not None)
+        return aa
 
 
 # ═══════════════════════════════════════

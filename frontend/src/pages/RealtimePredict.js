@@ -148,6 +148,7 @@ export default function RealtimePredict({
   onOpenSettings,
   onNavigateToModelMgmt,
   onNavigateToRealtime,
+  onNavigateToDataCleaning,
 }) {
   const [selectedModelIds, setSelectedModelIds] = useState([]);
   const [trainedModels, setTrainedModels] = useState([]);
@@ -177,6 +178,32 @@ export default function RealtimePredict({
   const [autoScrollLatest, setAutoScrollLatest] = useState(true);
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'chart'
 
+  // 案場清單(自動歸檔下拉用)
+  const [sites, setSites] = useState([]);
+
+  // 自動歸檔 (auto-archive):啟動只設案場,期間累積在後端 archive_buffer,停止時一次性寫入 DB
+  const [autoArchive, setAutoArchive] = useState({
+    enabled: false, site_id: null, site_name: null, started_at: null,
+    collected_count: 0, trainable_count: 0,
+  });
+  const [aaSiteId, setAaSiteId] = useState('');
+  const [aaToggling, setAaToggling] = useState(false);
+  const [aaError, setAaError] = useState('');
+  // 停止後保留上次歸檔摘要,讓使用者事後仍能直接拿去訓練
+  const [lastArchiveSummary, setLastArchiveSummary] = useState(null);
+
+  // 共用:把指定 upload 資訊寫入 localStorage 並跳到清洗頁
+  const goCleanThisUpload = ({ upload_id, site_id, site_name, file_name }) => {
+    if (!upload_id || !site_id) return;
+    localStorage.setItem('lastDataId', String(upload_id));
+    localStorage.setItem('lastUploadedFile', file_name || `realtime_${upload_id}.realtime`);
+    localStorage.setItem('selectedSiteId', String(site_id));
+    localStorage.setItem('lastSiteId', String(site_id));
+    if (site_name) localStorage.setItem('selectedSiteName', site_name);
+    localStorage.removeItem('afterDataId');
+    if (onNavigateToDataCleaning) onNavigateToDataCleaning();
+  };
+
   // ── 取得已訓練模型清單 ──
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem('user'));
@@ -204,6 +231,87 @@ export default function RealtimePredict({
       })
       .catch(() => {});
   }, []);
+
+  // ── 取得使用者的案場清單(用於「保存為訓練集」的下拉選單) ──
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (!user?.user_id) return;
+    fetch(`${API_BASE}/site/list?user_id=${user.user_id}`)
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setSites(data); })
+      .catch(() => {});
+  }, []);
+
+  // ── 自動歸檔:輪詢狀態 ──
+  useEffect(() => {
+    const refresh = () => {
+      fetch(`${API_BASE}/realtime/auto_archive/status`)
+        .then((r) => r.json())
+        .then((d) => { if (d) setAutoArchive(d); })
+        .catch(() => {});
+    };
+    refresh();
+    const t = setInterval(refresh, 3000);
+    return () => clearInterval(t);
+  }, []);
+
+  const handleAutoArchiveStart = async () => {
+    setAaError('');
+    if (!aaSiteId) { setAaError('請先選擇案場'); return; }
+    setAaToggling(true);
+    try {
+      const res = await fetch(`${API_BASE}/realtime/auto_archive/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site_id: Number(aaSiteId) }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setAaError(json.detail || '啟動失敗'); }
+      else {
+        setAutoArchive(json);
+        setLastArchiveSummary(null);   // 開新 session,清掉上次摘要
+      }
+    } catch (e) {
+      setAaError(e.message || '無法連線');
+    } finally {
+      setAaToggling(false);
+    }
+  };
+
+  const handleAutoArchiveStop = async () => {
+    setAaToggling(true);
+    setAaError('');
+    try {
+      const res = await fetch(`${API_BASE}/realtime/auto_archive/stop`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) {
+        setAaError(json.detail || '停止失敗');
+      } else {
+        if (json.upload_id && json.rows_saved > 0) {
+          setLastArchiveSummary({
+            upload_id: json.upload_id,
+            site_id: json.site_id,
+            site_name: json.site_name,
+            file_name: json.file_name,
+            rows_saved: json.rows_saved,
+            rows_skipped: json.rows_skipped || 0,
+            collected_count: json.collected_count || json.rows_saved,
+            started_at: json.started_at,
+            stopped_at: json.stopped_at || new Date().toLocaleString('zh-TW'),
+          });
+        } else {
+          // 無資料可存
+          setAaError(json.message || '本次未建立資料集');
+        }
+        setAutoArchive((prev) => ({ ...prev, enabled: false, collected_count: 0, trainable_count: 0 }));
+      }
+    } catch (e) {
+      setAaError(e.message || '無法連線');
+    } finally {
+      setAaToggling(false);
+    }
+  };
+
 
   const toggleModel = (modelId) => {
     const id = String(modelId);
@@ -680,6 +788,102 @@ export default function RealtimePredict({
                       <span className="text-blue-300/70 font-normal ml-1">（僅物理式）</span>
                     )}
                   </p>
+                )}
+              </div>
+
+              {/* 3. 自動歸檔 */}
+              <div>
+                <label className="text-sm text-white/40 mb-2 block font-bold uppercase tracking-widest flex items-center gap-2">
+                  3. 自動歸檔
+                  {autoArchive.enabled && (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/30 normal-case">
+                      <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-[10px] font-bold text-emerald-400">ARCHIVING</span>
+                    </span>
+                  )}
+                </label>
+
+                {!autoArchive.enabled ? (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+                    {lastArchiveSummary && (
+                      <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/[0.08] p-3 space-y-2 mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="material-symbols-outlined !text-base text-emerald-400">history</span>
+                          <span className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider">上次歸檔結果</span>
+                        </div>
+                        <div className="text-[11px] text-white/70 space-y-0.5 font-mono">
+                          <div>案場:<span className="text-white">{lastArchiveSummary.site_name}</span></div>
+                          <div>Upload:<span className="text-primary">#{lastArchiveSummary.upload_id}</span></div>
+                          <div>寫入筆數:<span className="text-emerald-400 font-bold">{lastArchiveSummary.rows_saved} 筆</span></div>
+                          {lastArchiveSummary.rows_skipped > 0 && (
+                            <div>略過:<span className="text-yellow-400">{lastArchiveSummary.rows_skipped} 筆</span></div>
+                          )}
+                          <div className="text-white/40 text-[10px]">{lastArchiveSummary.started_at} ~ {lastArchiveSummary.stopped_at}</div>
+                        </div>
+                        <button
+                          onClick={() => goCleanThisUpload(lastArchiveSummary)}
+                          className="w-full mt-1 px-3 py-2 rounded-lg bg-primary text-background-dark font-black text-xs hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                        >
+                          <span className="material-symbols-outlined !text-base">arrow_forward</span>
+                          用此資料 清洗 → 訓練
+                        </button>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-white/50 leading-relaxed">
+                      啟動後,平台會記錄這段期間的即時資料;按「停止」時一次性寫入該案場的資料庫(等同手動上傳 CSV)。
+                    </p>
+                    <div>
+                      <label className="text-[10px] text-white/40 mb-1 block font-bold uppercase">案場</label>
+                      <select
+                        value={aaSiteId}
+                        onChange={(e) => setAaSiteId(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-primary/50 focus:outline-none"
+                      >
+                        <option value="" className="bg-background-dark">-- 請選擇 --</option>
+                        {sites.map((s) => (
+                          <option key={s.site_id} value={s.site_id} className="bg-background-dark">
+                            {s.site_name} ({s.site_code})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {aaError && (
+                      <p className="text-[11px] text-red-400">{aaError}</p>
+                    )}
+                    <button
+                      onClick={handleAutoArchiveStart}
+                      disabled={aaToggling || !aaSiteId}
+                      className="w-full px-3 py-2 rounded-lg bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/25 transition-all text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      <span className="material-symbols-outlined !text-base">play_arrow</span>
+                      {aaToggling ? '啟動中...' : '啟動自動歸檔'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/[0.06] p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-white/40 font-bold uppercase">寫入案場</span>
+                      <span className="text-xs font-mono text-white">{autoArchive.site_name || `#${autoArchive.site_id}`}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-white/40 font-bold uppercase">啟動時間</span>
+                      <span className="text-[11px] font-mono text-white/70">{autoArchive.started_at || '—'}</span>
+                    </div>
+                    <p className="text-[10px] text-white/40 leading-relaxed pt-2 border-t border-white/5">
+                      平台正在記錄即時資料,按下方按鈕後會一次性寫入該案場的資料庫。
+                    </p>
+                    {aaError && (
+                      <p className="text-[11px] text-red-400">{aaError}</p>
+                    )}
+                    <button
+                      onClick={handleAutoArchiveStop}
+                      disabled={aaToggling}
+                      className="w-full mt-2 px-3 py-2 rounded-lg bg-red-500/15 border border-red-400/40 text-red-300 hover:bg-red-500/25 transition-all text-xs font-bold disabled:opacity-40 flex items-center justify-center gap-1.5"
+                    >
+                      <span className="material-symbols-outlined !text-base">stop</span>
+                      {aaToggling ? '處理中...' : '停止並寫入資料庫'}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

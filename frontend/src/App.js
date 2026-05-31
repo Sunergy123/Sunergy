@@ -186,6 +186,7 @@ function App() {
       onNavigateToRealtime: () => navigate('realtime-predict'),
       onNavigateToSites: () => navigate('site'),
       onNavigateToModelMgmt: () => navigate('model-mgmt'),
+      onNavigateToDataCleaning: () => navigate('data-cleaning'),
 
       onNavigateToChangePassword: () => setIsChangePasswordModalOpen(true),
       onOpenSettings: () => setIsSettingsModalOpen(true),
